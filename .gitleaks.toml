@@ -1,0 +1,9 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Public test vectors"
+# The web3.js documentation's example private key, used as a known-answer vector for
+# personal_sign in test/siwe.test.ts and test/session.test.ts. Published everywhere;
+# controls no funds. Only this exact value is allowed — the scanner stays on for the rest.
+regexes = ['''0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318''']

@@ -1,0 +1,89 @@
+{
+  "BTC": [
+    {
+      "asset": "BTC",
+      "is_dex": false,
+      "token_uri": "https://coin-images.coingecko.com/coins/images/1/large/bitcoin.png?1696501400",
+      "listed_at": "2024-12-19T17:14:40.349953Z",
+      "name": "Bitcoin",
+      "price": "63541.6926866067",
+      "fdv": "1277411774563",
+      "price_change_percentage_24h": "0",
+      "fdv_last_updated_at": "2026-08-13T15:49:31.330695038Z",
+      "volume_24h": "358883721.879084",
+      "funding_rate": "-0.007384",
+      "next_funding_rate": "-0.007384",
+      "funding_time": "2026-08-13T16:00:00Z",
+      "index_price": "63577.074229978",
+      "funding_interval_s": 28800,
+      "open_interest": {
+        "long_open_interest": "101298449.75204506716766596000",
+        "short_open_interest": "92382797.44724450697334653000"
+      },
+      "coingecko_id": "bitcoin",
+      "is_close_only_mode": false,
+      "is_isolable": true,
+      "has_perp": true,
+      "instrument_type": "perpetual_future",
+      "asset_class": null
+    }
+  ],
+  "ETH": [
+    {
+      "asset": "ETH",
+      "is_dex": false,
+      "token_uri": "https://coin-images.coingecko.com/coins/images/279/large/ethereum.png?1696501628",
+      "listed_at": "2024-12-19T17:13:57.817283Z",
+      "name": "Ethereum",
+      "price": "1884.97104917394",
+      "fdv": "227871285072",
+      "price_change_percentage_24h": "-0.4",
+      "fdv_last_updated_at": "2026-08-13T15:49:31.330793646Z",
+      "volume_24h": "96296048.173434",
+      "funding_rate": "-0.160440",
+      "next_funding_rate": "-0.160440",
+      "funding_time": "2026-08-13T16:00:00Z",
+      "index_price": "1885.947094645971",
+      "funding_interval_s": 28800,
+      "open_interest": {
+        "long_open_interest": "80432855.57632177348022688000",
+        "short_open_interest": "50829188.063908637653246320000"
+      },
+      "coingecko_id": "ethereum",
+      "is_close_only_mode": false,
+      "is_isolable": true,
+      "has_perp": true,
+      "instrument_type": "perpetual_future",
+      "asset_class": null
+    }
+  ],
+  "SHAZ": [
+    {
+      "asset": "SHAZ",
+      "is_dex": false,
+      "token_uri": "https://images.financialmodelingprep.com/symbol/SHAZ.png",
+      "listed_at": "2026-08-07T00:54:03.429661Z",
+      "name": "SharonAI Holdings, Inc. Class A Common Stock",
+      "price": "71.7001303911234",
+      "fdv": "2514666735",
+      "price_change_percentage_24h": "4.80573",
+      "fdv_last_updated_at": "2026-08-13T15:49:31.330770712Z",
+      "volume_24h": "46760.196041",
+      "funding_rate": "0.144184",
+      "next_funding_rate": "0.144184",
+      "funding_time": "2026-08-13T16:00:00Z",
+      "index_price": "71.6864423906039",
+      "funding_interval_s": 28800,
+      "open_interest": {
+        "long_open_interest": "110558.20071758169296330000000",
+        "short_open_interest": "21478.190063976006290700000000"
+      },
+      "coingecko_id": "SHAZ",
+      "is_close_only_mode": false,
+      "is_isolable": true,
+      "has_perp": true,
+      "instrument_type": "perpetual_rwa_future",
+      "asset_class": "equity"
+    }
+  ]
+}

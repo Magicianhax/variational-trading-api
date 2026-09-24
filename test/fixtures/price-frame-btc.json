@@ -1,0 +1,16 @@
+{
+  "channel": "instrument_price:P-BTC-USDC-3600",
+  "pricing": {
+    "price": "63555.71",
+    "native_price": "0.9995",
+    "delta": "1",
+    "gamma": "0",
+    "theta": "0",
+    "vega": "0",
+    "rho": "0",
+    "iv": "0",
+    "underlying_price": "63586.14",
+    "interest_rate": "0.0000606999999999999982061225",
+    "timestamp": "2026-08-13T15:56:14.566862Z"
+  }
+}

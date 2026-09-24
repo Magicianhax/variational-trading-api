@@ -1,0 +1,18 @@
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+
+# Credentials never leave your machine.
+.env
+.env.*
+!.env.example
+*.session.json
+session*.json
+
+# Browser profiles used by the Playwright transport.
+.browser-profile/
+browser-profile/
+
+.DS_Store
+Thumbs.db

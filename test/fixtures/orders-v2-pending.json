@@ -1,0 +1,32 @@
+{
+  "result": [
+    {
+      "rfq_id": "11111111-2222-3333-4444-555555555555",
+      "instrument": {
+        "underlying": "BTC",
+        "instrument_type": "perpetual_future",
+        "settlement_asset": "USDC",
+        "funding_interval_s": 3600
+      },
+      "side": "sell",
+      "qty": "0.5",
+      "order_type": "stop_loss",
+      "limit_price": null,
+      "trigger_price": "61234.5",
+      "price": null,
+      "status": "pending",
+      "clearing_status": "pending_clearing",
+      "cancel_reason": null,
+      "failed_risk_checks": null,
+      "is_reduce_only": true,
+      "is_auto_resize": true,
+      "use_mark_price": true,
+      "slippage_limit": "0.03",
+      "tif": "good_til_canceled",
+      "created_at": "2026-08-13T15:42:00Z"
+    }
+  ],
+  "pagination": {
+    "object_count": 1
+  }
+}

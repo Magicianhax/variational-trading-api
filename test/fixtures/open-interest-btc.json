@@ -1,0 +1,10 @@
+{
+  "instrument": {
+    "instrument_type": "perpetual_future",
+    "underlying": "BTC",
+    "funding_interval_s": 3600,
+    "settlement_asset": "USDC"
+  },
+  "long_qty": "1593.834206800000",
+  "short_qty": "1453.452953900000"
+}

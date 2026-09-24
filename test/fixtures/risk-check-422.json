@@ -1,0 +1,8 @@
+{
+  "error_code": "user_gross_notional_limit_risk_check",
+  "name": "user_gross_notional_limit_risk_check",
+  "passed": false,
+  "limit": "1000000",
+  "result": "1200000",
+  "message": "Validation error: gross notional limit exceeded"
+}

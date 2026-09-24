@@ -1,0 +1,12 @@
+# Single-package repo; this file only carries pnpm settings.
+packages:
+  - '.'
+
+# Postinstall scripts are blocked by default; esbuild (used by vitest) needs its binary.
+allowBuilds:
+  esbuild: true
+
+# Some Windows machines run Application Control, which blocks newer rollup native
+# binaries (ERR_DLOPEN_FAILED). Pinned here for pnpm and in package.json for npm.
+overrides:
+  rollup: 4.62.4

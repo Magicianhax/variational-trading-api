@@ -1,0 +1,10 @@
+{
+  "mark_price": 71.9999,
+  "fdv_usd": null,
+  "oi_limit_usd": 12500000,
+  "current_oi_usd": 132613.73581399999,
+  "skew_limit_usd": 255004.361318,
+  "current_skew_usd": 89469.5237366,
+  "long_qty": "1542.247000000000",
+  "short_qty": "299.613000000000"
+}

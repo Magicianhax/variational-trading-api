@@ -1,0 +1,27 @@
+{
+  "instrument": {
+    "instrument_type": "perpetual_future",
+    "underlying": "BTC",
+    "funding_interval_s": 3600,
+    "settlement_asset": "USDC"
+  },
+  "qty": "0.001",
+  "bid": "63344.45",
+  "ask": "63349.06",
+  "mark_price": "63346.7543455801",
+  "index_price": "63386.6951750938",
+  "timestamp": "2026-08-13T16:01:55.905Z",
+  "quote_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+  "qty_limits": {
+    "bid": {
+      "min_qty_tick": "0.000001",
+      "min_qty": "0.000002",
+      "max_qty": "15786702.702446"
+    },
+    "ask": {
+      "min_qty_tick": "0.000001",
+      "min_qty": "0.000002",
+      "max_qty": "15785553.881936"
+    }
+  }
+}

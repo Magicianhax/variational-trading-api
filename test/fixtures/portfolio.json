@@ -1,0 +1,32 @@
+{
+  "balance": "10000.00",
+  "upnl": "340.96",
+  "margin_usage": {
+    "initial_margin": "3932.06",
+    "maintenance_margin": "1966.03"
+  },
+  "sub_accounts": {
+    "cross": {
+      "balance": "9000.00",
+      "initial_margin": "3178.08",
+      "maintenance_margin": "1589.04"
+    },
+    "cross_available": "5821.92",
+    "cross_free_to_mm": "7410.96",
+    "isolated": [
+      {
+        "instrument": {
+          "underlying": "ETH",
+          "instrument_type": "perpetual_future",
+          "settlement_asset": "USDC",
+          "funding_interval_s": 3600
+        },
+        "balance": "1000.00",
+        "allocated_qty": "-4.000000",
+        "initial_margin": "753.98",
+        "maintenance_margin": "376.99",
+        "available": "246.02"
+      }
+    ]
+  }
+}

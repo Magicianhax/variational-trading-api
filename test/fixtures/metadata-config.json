@@ -1,0 +1,31 @@
+{
+  "min_order_notional": "0.1",
+  "max_order_notional": "1000000000000",
+  "default_precision_requirements": {
+    "min_decimal_figures": 2,
+    "max_decimal_only_figures": 4,
+    "max_significant_figures": 6
+  },
+  "transfer_fee": "0.1",
+  "futures_taker_fee": "0.0",
+  "pool_creation_fee": "0",
+  "default_margin_params": {
+    "margin_mode": "simple",
+    "params": {
+      "asset_params": {},
+      "default_asset_param": {
+        "futures_initial_margin": "0.2",
+        "futures_maintenance_margin": "0.1",
+        "futures_leverage": "100000000000",
+        "option_initial_margin": "0.15",
+        "option_initial_margin_min": "0.1",
+        "option_maintenance_margin": "0.075"
+      },
+      "use_default_asset_param": false,
+      "liquidation_penalty": "0.1",
+      "auto_liquidation": true
+    }
+  },
+  "referrals_activation_volume": "1000000",
+  "referrals_extra_capacity_volume": "1000000"
+}

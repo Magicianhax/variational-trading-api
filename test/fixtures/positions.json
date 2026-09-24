@@ -1,0 +1,56 @@
+[
+  {
+    "position_info": {
+      "instrument": {
+        "underlying": "BTC",
+        "instrument_type": "perpetual_future",
+        "settlement_asset": "USDC",
+        "funding_interval_s": 3600
+      },
+      "qty": "0.500000",
+      "avg_entry_price": "63000.00",
+      "updated_at": "2026-08-13T15:40:00Z"
+    },
+    "price_info": {
+      "price": "63561.68"
+    },
+    "value": "31780.84",
+    "upnl": "280.84",
+    "rpnl": "-4.56",
+    "cum_funding": "0.98",
+    "estimated_liquidation_price": "58012.4",
+    "initial_margin": "3178.08",
+    "maintenance_margin": "1589.04",
+    "pending_order_counts": {
+      "stop_loss": "1",
+      "take_profit": "0"
+    }
+  },
+  {
+    "position_info": {
+      "instrument": {
+        "underlying": "ETH",
+        "instrument_type": "perpetual_future",
+        "settlement_asset": "USDC",
+        "funding_interval_s": 3600
+      },
+      "qty": "-4.000000",
+      "avg_entry_price": "1900.00",
+      "updated_at": "2026-08-13T15:41:00Z"
+    },
+    "price_info": {
+      "price": "1884.97"
+    },
+    "value": "-7539.88",
+    "upnl": "60.12",
+    "rpnl": "0",
+    "cum_funding": "-0.11",
+    "estimated_liquidation_price": null,
+    "initial_margin": "753.98",
+    "maintenance_margin": "376.99",
+    "pending_order_counts": {
+      "stop_loss": "0",
+      "take_profit": "0"
+    }
+  }
+]
