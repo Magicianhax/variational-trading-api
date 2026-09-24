@@ -15,8 +15,8 @@
  *  5. `pricing.timestamp` lags and REPEATS — dedupe on it, never on arrival.
  *
  * `pricing.price` is the perp MARK price, but rounded to display precision
- * (BTC arrives as `63555.71`). For trigger-grade precision use
- * {@link QuotesFeed}, which carries an unrounded `mark_price`.
+ * (BTC arrives as `63555.71`). For trigger-grade precision poll REST
+ * `OmniClient.quoteSimple()`, whose `mark_price` is unrounded.
  */
 
 import { SchemaDriftError } from '../errors.js'

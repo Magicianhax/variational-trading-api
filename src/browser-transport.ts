@@ -6,14 +6,14 @@
  * The venue fronts `/api/*` with Cloudflare Bot Management. From a datacenter IP it
  * answers `403` with `Cf-Mitigated: challenge` -- the "Just a moment..." interstitial --
  * for any HTTP client, including the curl transport that works fine from a home
- * connection. Measured across three independent hosting IPs (two providers, one after a
- * clean OS install): all challenged, while public endpoints like `/metadata/stats` pass.
+ * connection. Measured from datacenter IPs: challenged, while public endpoints like
+ * `/metadata/stats` pass.
  *
  * A managed challenge is not a block. It is a test that real browsers pass and simple
  * HTTP clients fail, and it resolves itself once the challenge script executes. So this
  * transport satisfies it the intended way: by being an actual browser.
  *
- * Measured on the deployment host:
+ * Measured from a datacenter IP:
  *   headless shell, /api/me   -> stuck on "Just a moment..."
  *   headed Chromium + xvfb    -> 200, real API body
  *
@@ -211,9 +211,8 @@ export function createBrowserTransport(options: BrowserTransportOptions): FetchL
     /*
      * An XHR can be challenged on its own while the PAGE stays perfectly clear -- the
      * challenge HTML arrives in the fetch response and there is no document for its
-     * script to run in. Retrying the XHR can therefore never clear it, which is exactly
-     * how this deployment ended up in a 403 storm: every retry was another XHR that
-     * could not possibly succeed.
+     * script to run in. Retrying the XHR can therefore never clear it: every retry is
+     * another XHR that cannot succeed, and a retry loop becomes a 403 storm.
      *
      * A challenge is cleared by a NAVIGATION. So when we see one, navigate the page --
      * which lets the challenge run and resolve as intended -- and try the request once
@@ -265,7 +264,7 @@ export function createBrowserTransport(options: BrowserTransportOptions): FetchL
 }
 
 /**
- * Cookies that belong to Cloudflare's bot management rather than the venue.
+ * Only the venue's `vr-*` cookies are the session; everything else stays behind.
  *
  * `__cf_bm` and `_cfuvid` are bound to the client and network that earned them, and
  * `cf_clearance` likewise. A session captured in someone's desktop browser carries
@@ -276,7 +275,7 @@ export function createBrowserTransport(options: BrowserTransportOptions): FetchL
  *
  * This browser earns its own. Only the venue's session cookies cross over.
  */
-const CLOUDFLARE_COOKIES = /^(__cf_bm|_cfuvid|cf_clearance|__cflb|__cfwaitingroom)$/i
+const SESSION_COOKIE = /^vr-/
 
 /**
  * Drop every cookie except the venue's own session, and let the browser re-earn its
@@ -284,7 +283,7 @@ const CLOUDFLARE_COOKIES = /^(__cf_bm|_cfuvid|cf_clearance|__cflb|__cfwaitingroo
  *
  * A persistent profile accumulates `__cf_bm` (Cloudflare's bot-management token, bound
  * to the client and network that earned it) alongside analytics cookies. A stale one
- * marks the browser as suspicious on EVERY request -- measured on this deployment: with
+ * marks the browser as suspicious on EVERY request -- measured from a datacenter IP: with
  * the accumulated jar, even a plain navigation to /metadata/config returned 403 and the
  * challenge never cleared in 20s; after purging everything but the `vr-*` cookies the
  * same navigation returned 200 and an authenticated /api/positions returned real data.
@@ -293,16 +292,14 @@ const CLOUDFLARE_COOKIES = /^(__cf_bm|_cfuvid|cf_clearance|__cflb|__cfwaitingroo
  */
 export async function purgeNonSessionCookies(context: ContextLike): Promise<void> {
   const jar = await context.cookies()
-  const keep = jar.filter((c) => /^vr-/.test(c.name))
+  const keep = jar.filter((c) => SESSION_COOKIE.test(c.name))
   await context.clearCookies()
   if (keep.length > 0) await context.addCookies(keep)
   /*
-   * The jar now has NO Cloudflare state, and an XHR sent in that condition is the exact
-   * profile a managed challenge exists to catch: datacenter IP, script-initiated fetch,
-   * valid session, zero bot-management history. A navigation re-earns __cf_bm; a fetch
-   * cannot. So mark the jar dirty and let pageOnOrigin() navigate before anything else
-   * goes out -- the successful manual test purged AND navigated, and only the
-   * navigation made it work.
+   * The jar now has NO Cloudflare state. A fetch cannot earn it back; only a page
+   * navigation runs the challenge script that issues a fresh __cf_bm. So mark the jar
+   * dirty and let pageOnOrigin() navigate before anything else goes out: in testing,
+   * purging alone did not help, purging and then navigating did.
    */
   dirtyJars.add(context)
 }
@@ -310,7 +307,11 @@ export async function purgeNonSessionCookies(context: ContextLike): Promise<void
 /** Contexts whose cookies were cleared and which must navigate before their next fetch. */
 const dirtyJars = new WeakSet<object>()
 
-/** Inject a venue session into the browser's cookie jar. */
+/**
+ * Inject a venue session into the browser's cookie jar. Only the `vr-*` session cookies
+ * cross over, matching {@link purgeNonSessionCookies}: Cloudflare's are bound to the
+ * browser that earned them, and analytics cookies carry nothing the API reads.
+ */
 export async function setBrowserCookies(
   context: ContextLike,
   cookieHeader: string,
@@ -320,7 +321,7 @@ export async function setBrowserCookies(
     .split(';')
     .map((p) => p.trim())
     .filter((p) => p.includes('='))
-    .filter((p) => !CLOUDFLARE_COOKIES.test(p.slice(0, p.indexOf('=')).trim()))
+    .filter((p) => SESSION_COOKIE.test(p.slice(0, p.indexOf('=')).trim()))
     .map((p) => {
       const idx = p.indexOf('=')
       return {

@@ -26,7 +26,8 @@ export type BucketConfig = {
 export type RateLimiterConfig = Partial<Record<RateClass, BucketConfig>>
 
 /**
- * Defaults from the design spec. `order` is deliberately the tightest budget
+ * Conservative defaults, chosen so a burst of polling can never starve an emergency
+ * close: the venue publishes no limits. `order` is deliberately the tightest budget
  * and the only one with a burst smaller than its sustained rate.
  */
 export const DEFAULT_RATE_LIMITS: Readonly<Record<RateClass, BucketConfig>> = {

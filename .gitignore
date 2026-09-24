@@ -10,6 +10,14 @@ coverage/
 *.session.json
 session*.json
 
+# These carry keys or sessions: Chrome's "Pack extension" writes a signing key (*.pem)
+# next to the packed extension (*.crx, *.zip), and a DevTools HAR capture holds every
+# cookie the browser sent.
+*.pem
+*.crx
+*.zip
+*.har
+
 # Browser profiles used by the Playwright transport.
 .browser-profile/
 browser-profile/

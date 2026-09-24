@@ -2,19 +2,17 @@
  * Account state: balance, positions, and the transfer ledger (deposits, withdrawals,
  * realised PnL, funding, fees — the venue's own record of every cash movement).
  *
- *   pnpm example examples/account.ts
+ *   pnpm example examples/account.ts [path/to/session.json]
  *
- * Needs a session: VARIATIONAL_COOKIES (a Cookie header or session JSON, in .env or the
- * environment), else ./session.json from the browser extension. See docs/AUTH.md.
+ * Needs a session, found in the same order as `pnpm session:check`: the path given,
+ * else ./session.json (from the browser extension), else VARIATIONAL_COOKIES (in .env
+ * or the environment). See docs/AUTH.md.
  */
-import { OmniClient } from '../dist/index.js'
-import { loadEnv } from './_env.ts'
+import { clientFromEnv, exitWith } from './_env.ts'
 
-loadEnv()
-// `||`, not `??`: an empty VARIATIONAL_COOKIES= line in .env should fall through too.
-const client = OmniClient.fromSession(process.env['VARIATIONAL_COOKIES'] || 'session.json')
+const client = clientFromEnv()
 const me = await client.getMe()
-if (me.token === '') throw new Error('session rejected or expired: export a fresh one')
+if (me.token === '') exitWith('The venue did not accept the session (signed out or expired).')
 
 const portfolio = await client.getPortfolio()
 console.log('balance', portfolio.balance, '| unrealised', portfolio.upnl)

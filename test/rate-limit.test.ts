@@ -59,7 +59,7 @@ describe('RateLimiter', () => {
     expect(clock.now() - before).toBeGreaterThanOrEqual(2_000)
   })
 
-  it('ships the budgets the design spec calls for', () => {
+  it('ships the documented default budgets (docs/ACCESS.md)', () => {
     expect(DEFAULT_RATE_LIMITS.order).toEqual({ tokens: 6, windowMs: 10_000, burst: 3 })
     expect(DEFAULT_RATE_LIMITS.read).toEqual({ tokens: 20, windowMs: 10_000 })
     expect(DEFAULT_RATE_LIMITS.quote).toEqual({ tokens: 30, windowMs: 10_000 })

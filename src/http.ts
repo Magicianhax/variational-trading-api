@@ -171,7 +171,7 @@ export type TransportOptions = {
   now?: () => number
   sleep?: (ms: number) => Promise<void>
   random?: () => number
-  /** Extra headers merged into every request (e.g. a UA for the impersonating shim). */
+  /** Extra headers merged into every request (e.g. a different User-Agent). */
   defaultHeaders?: Readonly<Record<string, string>>
 }
 
@@ -324,8 +324,7 @@ export class OmniHttp {
       // Cloudflare fronts /api and 403s ("Just a moment...") any request without a
       // browser User-Agent. Verified 2026-08-13: bare curl -> 403, curl -A <Chrome UA>
       // -> 200 on the same path. The UA alone is the discriminator today, so a plain
-      // client passes; `defaultHeaders` can override this for a stronger impersonation
-      // shim if Cloudflare's posture tightens.
+      // client passes. `defaultHeaders` can replace it, e.g. with your own browser's UA.
       'user-agent': BROWSER_USER_AGENT,
       ...this.defaultHeaders,
       ...spec.headers,

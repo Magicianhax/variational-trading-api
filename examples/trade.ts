@@ -1,25 +1,21 @@
 /**
  * Quote, then a market order — DRY RUN unless DRY_RUN=false.
  *
- *   pnpm example examples/trade.ts
+ *   pnpm example examples/trade.ts [path/to/session.json]
  *
- * Needs a session, as examples/account.ts does (docs/AUTH.md).
+ * Needs a session, found as examples/account.ts finds it (docs/AUTH.md).
  *
  * A market order needs a fresh quote id; quotes age out fast (QUOTE_MAX_AGE_MS), so
  * quote and order back to back. Slippage is passed in bps here and sent to the venue as
  * a FRACTION of 1 — the client does that conversion (docs/API.md).
  */
-import { OmniClient } from '../dist/index.js'
-import { isDryRun, loadEnv } from './_env.ts'
+import { clientFromEnv, exitWith, isDryRun, loadEnv } from './_env.ts'
 
 loadEnv()
 const dryRun = isDryRun()
-// `||`, not `??`: an empty VARIATIONAL_COOKIES= line in .env should fall through too.
-const client = OmniClient.fromSession(process.env['VARIATIONAL_COOKIES'] || 'session.json', {
-  dryRun,
-})
+const client = clientFromEnv({ dryRun })
 const me = await client.getMe()
-if (me.token === '') throw new Error('session rejected or expired: export a fresh one')
+if (me.token === '') exitWith('The venue did not accept the session (signed out or expired).')
 
 const instrument = { symbol: 'BTC', instrument_type: 'perpetual_future' as const }
 const quote = await client.quoteIndicative({ instrument, qty: '0.0001' })

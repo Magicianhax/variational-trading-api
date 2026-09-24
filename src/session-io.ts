@@ -12,23 +12,8 @@
  */
 
 import { existsSync, readFileSync, statSync } from 'node:fs'
+import { isExcludedCookie } from './cookie-policy.js'
 import type { SessionBundle } from './session-bundle.js'
-
-/*
- * Cloudflare's cookies are bound to the client and network that earned them. Replayed
- * from another process, a stale `__cf_bm` marks every request as suspicious and draws a
- * challenge instead of helping (see browser-transport.ts for the measurement), so they
- * are dropped rather than forwarded. `_cfuvid` is the one that does not share a prefix.
- */
-const CLOUDFLARE_COOKIE = /^(?:__cf|cf_|_cfuvid$)/i
-
-/*
- * Analytics cookies carry nothing the API reads. Dropping them keeps a pasted header
- * short enough to fit in an env var and keeps third-party identifiers out of a file
- * that may be copied between machines.
- */
-const ANALYTICS_COOKIE =
-  /^(?:_ga|_gid$|_gat|_fbp$|_fbc$|_dd_s$|_uetsid$|_uetvid$|ajs_|amplitude|intercom-|_hj|mp_)/i
 
 /**
  * Normalise a `Cookie` header copied from a browser: strip a leading `cookie:` label
@@ -36,11 +21,8 @@ const ANALYTICS_COOKIE =
  * the order given. Returns `''` when nothing survives.
  */
 export function cleanCookieHeader(header: string): string {
-  let text = header.trim()
   // "Copy as cURL" and DevTools both hand out the header with quotes around it at times.
-  if (text.length >= 2 && (text[0] === '"' || text[0] === "'") && text.at(-1) === text[0])
-    text = text.slice(1, -1).trim()
-  text = text.replace(/^cookie\s*:/i, '')
+  const text = unquote(header).replace(/^cookie\s*:/i, '')
 
   const kept: string[] = []
   // Split on newlines too: a header pasted from a wrapped DevTools pane can carry them.
@@ -49,7 +31,8 @@ export function cleanCookieHeader(header: string): string {
     const eq = pair.indexOf('=')
     if (eq <= 0) continue
     const name = pair.slice(0, eq).trim()
-    if (name === '' || CLOUDFLARE_COOKIE.test(name) || ANALYTICS_COOKIE.test(name)) continue
+    // One denylist shared with the browser extension: src/cookie-policy.ts.
+    if (name === '' || isExcludedCookie(name)) continue
     kept.push(`${name}=${pair.slice(eq + 1).trim()}`)
   }
   return kept.join('; ')
@@ -69,7 +52,9 @@ export function cleanCookieHeader(header: string): string {
 export function loadSession(source: string | SessionBundle): SessionBundle {
   if (typeof source !== 'string') return normalise(source, 'session object')
 
-  const text = source.trim()
+  // A value from a .env file or a shell often arrives wrapped in quotes; without this a
+  // quoted JSON session fails the `{` check below and is misread as a cookie header.
+  const text = unquote(source)
   if (text === '') throw new Error(`${NO_SESSION} The session source is empty.`)
   if (text.startsWith('{')) return normalise(parseJson(text, 'session JSON'), 'session JSON')
   if (isFile(text)) return normalise(parseJson(readFileSync(text, 'utf8'), text), text)
@@ -81,9 +66,11 @@ export function loadSession(source: string | SessionBundle): SessionBundle {
    * like one, so a mistakenly pasted bare token never lands in an error message.
    */
   if (!text.includes('=')) {
-    const shown = /\.json$/i.test(text) && text.length < 512 ? ` "${text}"` : ''
+    const looksLikePath = /\.json$/i.test(text) && text.length < 512
     throw new Error(
-      `${NO_SESSION} No session file found${shown}, and the value is not a Cookie header either.`,
+      looksLikePath
+        ? `No session file at "${text}". ${GET_ONE}`
+        : `${NO_SESSION} The value is neither a session file path nor a Cookie header. ${GET_ONE}`,
     )
   }
 
@@ -94,6 +81,16 @@ export function loadSession(source: string | SessionBundle): SessionBundle {
 }
 
 const NO_SESSION = 'No usable Variational session.'
+const GET_ONE =
+  'Export one (docs/AUTH.md) or set VARIATIONAL_COOKIES, then run `pnpm session:check`.'
+
+/** Trim, then remove ONE pair of matching wrapping quotes. */
+function unquote(value: string): string {
+  const text = value.trim()
+  if (text.length >= 2 && (text[0] === '"' || text[0] === "'") && text.at(-1) === text[0])
+    return text.slice(1, -1).trim()
+  return text
+}
 const EMPTY_COOKIES =
   'The cookie header has no cookies left after dropping Cloudflare and analytics ones -- ' +
   'copy it from a request to omni.variational.io/api while signed in (the vr-* cookies are the session).'

@@ -7,8 +7,11 @@
  *    `/portfolio` authenticate with a FIRST APPLICATION FRAME `{"claims":jwt}`
  *    inside a ~2.5 s server-side deadline.
  *  - The server heartbeats every 5.000 s on `/prices`, `/events`, `/portfolio`
- *    (on a global wall clock, identical sub-second across connections) but NOT
- *    on `/quotes/simple`, which is silent until you ask it something.
+ *    (on a global wall clock, identical sub-second across connections).
+ *  - A path the server does not serve still OPENS, then gets one text frame
+ *    ("unknown path, must be ...") and a close. So a successful OPEN proves
+ *    nothing about health: backoff resets only once the connection has
+ *    delivered a JSON frame or stayed up for `stableMs`.
  *  - There are no RFC-6455 PING/PONGs and no client-side heartbeat. Liveness is
  *    an inbound-silence watchdog only.
  *  - The send queue does NOT survive a reconnect, so `{claims}` and
@@ -69,10 +72,15 @@ export type ManagedSocketOptions = {
   logger?: Logger
   /**
    * Inbound-silence watchdog. 12 000 ms on the heartbeat-bearing paths (two
-   * missed 5 s beats plus margin); ~3 000 ms on `/quotes/simple`, which has no
-   * heartbeats but streams at 1 Hz. `0` disables it.
+   * missed 5 s beats plus margin). `0` disables it.
    */
   silenceMs?: number
+  /**
+   * How long a connection must stay open, with or without data, before the
+   * backoff resets. A JSON frame resets it sooner. Without this, a server that
+   * accepts and immediately closes would be reconnected to at full speed forever.
+   */
+  stableMs?: number
   /** A stalled handshake is abandoned after this long. */
   connectTimeoutMs?: number
   /** First retry is immediate; then `minDelayMs * 2^(n-1)`, capped. */
@@ -94,6 +102,7 @@ export class ManagedSocket extends Emitter<ManagedSocketEvents> {
   private readonly connectTimeoutMs: number
   private readonly minDelayMs: number
   private readonly maxDelayMs: number
+  private readonly stableMs: number
   private readonly onOpenHook: ((socket: ManagedSocket) => void) | undefined
   private readonly setTimeoutImpl: (fn: () => void, ms: number) => unknown
   private readonly clearTimeoutImpl: (handle: unknown) => void
@@ -106,6 +115,7 @@ export class ManagedSocket extends Emitter<ManagedSocketEvents> {
   private silenceTimer: unknown = null
   private connectTimer: unknown = null
   private reconnectTimer: unknown = null
+  private stableTimer: unknown = null
 
   constructor(options: ManagedSocketOptions) {
     super()
@@ -117,6 +127,7 @@ export class ManagedSocket extends Emitter<ManagedSocketEvents> {
     this.connectTimeoutMs = options.connectTimeoutMs ?? 4_000
     this.minDelayMs = options.minDelayMs ?? 1_000
     this.maxDelayMs = options.maxDelayMs ?? 60_000
+    this.stableMs = options.stableMs ?? 10_000
     this.onOpenHook = options.onOpen
     this.setTimeoutImpl = options.setTimeoutImpl ?? ((fn, ms) => setTimeout(fn, ms))
     this.clearTimeoutImpl =
@@ -131,7 +142,7 @@ export class ManagedSocket extends Emitter<ManagedSocketEvents> {
     return this.stateValue === 'open'
   }
 
-  /** Connection attempts since the last successful OPEN. */
+  /** Connection attempts since the connection last proved healthy (see `stableMs`). */
   get retryCount(): number {
     return this.attempt
   }
@@ -150,6 +161,7 @@ export class ManagedSocket extends Emitter<ManagedSocketEvents> {
     this.clearTimer('reconnectTimer')
     this.clearTimer('connectTimer')
     this.clearTimer('silenceTimer')
+    this.clearTimer('stableTimer')
     this.queue = []
     const socket = this.socket
     this.socket = null
@@ -166,6 +178,7 @@ export class ManagedSocket extends Emitter<ManagedSocketEvents> {
     if (socket !== null) discard(socket, 4000, reason)
     this.clearTimer('silenceTimer')
     this.clearTimer('connectTimer')
+    this.clearTimer('stableTimer')
     this.scheduleReconnect()
   }
 
@@ -217,7 +230,11 @@ export class ManagedSocket extends Emitter<ManagedSocketEvents> {
     socket.onopen = () => {
       if (this.socket !== socket) return
       this.clearTimer('connectTimer')
-      this.attempt = 0
+      this.clearTimer('stableTimer')
+      this.stableTimer = this.setTimeoutImpl(() => {
+        this.stableTimer = null
+        this.attempt = 0
+      }, this.stableMs)
       this.setState('open')
       this.armSilenceWatchdog()
       this.emit('open', undefined)
@@ -249,6 +266,8 @@ export class ManagedSocket extends Emitter<ManagedSocketEvents> {
         this.emit('text', raw)
         return
       }
+      // A JSON frame means the path is real and the server is talking: healthy.
+      this.attempt = 0
       if (isHeartbeat(parsed)) {
         this.emit('heartbeat', { timestamp: parsed.timestamp })
         return
@@ -267,6 +286,7 @@ export class ManagedSocket extends Emitter<ManagedSocketEvents> {
       detach(socket)
       this.clearTimer('connectTimer')
       this.clearTimer('silenceTimer')
+      this.clearTimer('stableTimer')
       this.queue = []
       const willReconnect = !this.stopped
       this.setState('closed')
@@ -299,7 +319,9 @@ export class ManagedSocket extends Emitter<ManagedSocketEvents> {
     }, this.silenceMs)
   }
 
-  private clearTimer(field: 'silenceTimer' | 'connectTimer' | 'reconnectTimer'): void {
+  private clearTimer(
+    field: 'silenceTimer' | 'connectTimer' | 'reconnectTimer' | 'stableTimer',
+  ): void {
     const handle = this[field]
     if (handle !== null) {
       this.clearTimeoutImpl(handle)
@@ -329,7 +351,7 @@ function detach(socket: WebSocketLike): void {
  * Observed live: a mark-feed flap put the socket in CONNECTING, the silence
  * watchdog fired `reconnect()`, and the process exited with
  * "WebSocket was closed before the connection was established" — a routine feed
- * hiccup turned into a dead bot.
+ * hiccup turned into a crashed process.
  *
  * So we keep a no-op `onerror` attached across the close instead of nulling it.
  */

@@ -55,6 +55,12 @@ describe('cleanCookieHeader', () => {
     expect(cleanCookieHeader(header)).toBe('vr-token=abc; locale=en')
   })
 
+  it('uses the same denylist as the browser extension', () => {
+    // Names the extension always dropped and the client once kept.
+    const header = '_gcl_au=1; ph_abc_posthog=2; _dd_rum=3; _clck=4; __hstc=5; vr-token=abc'
+    expect(cleanCookieHeader(header)).toBe('vr-token=abc')
+  })
+
   it('keeps "=" inside a value and tolerates quotes, stray separators and newlines', () => {
     expect(cleanCookieHeader('"cookie: vr-token=a=b==;; junk; \n vr-x=1;"')).toBe(
       'vr-token=a=b==; vr-x=1',
@@ -136,14 +142,38 @@ describe('loadSession', () => {
       ['JSON whose cookies all get stripped', '{"token":"","cookies":"_ga=1"}'],
       ['JSON that is not an object', '{not json'],
       ['a non-string cookies field', '{"cookies":42}'],
-      ['a missing file', join(dir, 'nope.json')],
     ])('%s', (_label, input) => {
       expect(() => loadSession(input)).toThrow(/No usable Variational session/)
+    })
+
+    it('a missing file, with a pointer to what to do next', () => {
+      expect(() => loadSession('session.json')).toThrow(
+        'No session file at "session.json". Export one (docs/AUTH.md) or set VARIATIONAL_COOKIES, then run `pnpm session:check`.',
+      )
+      expect(() => loadSession(join(dir, 'nope.json'))).toThrow(/No session file at/)
     })
 
     it('a non-object bundle', () => {
       expect(() => loadSession(null as unknown as SessionBundle)).toThrow(/not a session object/)
       expect(() => loadSession('[1]' as string)).toThrow(/No usable Variational session/)
+    })
+  })
+
+  describe('values wrapped in quotes, as .env files and shells deliver them', () => {
+    const json = JSON.stringify({ token: '', cookies: SESSION_COOKIES, expiresAt: 5 })
+
+    it('reads single- or double-quoted session JSON as JSON, not as a cookie header', () => {
+      expect(loadSession(`'${json}'`)).toEqual({
+        token: '',
+        cookies: SESSION_COOKIES,
+        expiresAt: 5,
+      })
+      expect(loadSession(`"${json}"`).cookies).toBe(SESSION_COOKIES)
+    })
+
+    it('reads a quoted cookie header', () => {
+      expect(loadSession(`"${SESSION_COOKIES}"`).cookies).toBe(SESSION_COOKIES)
+      expect(loadSession(`'cookie: ${SESSION_COOKIES}'`).cookies).toBe(SESSION_COOKIES)
     })
   })
 

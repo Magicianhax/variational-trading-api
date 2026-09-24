@@ -22,8 +22,6 @@ import {
   OmniClient,
   PricesFeed,
   type PricesFeedEvents,
-  QuotesFeed,
-  type QuotesFeedEvents,
 } from '../dist/index.js'
 
 type Outcome = 'PASS' | 'FAIL' | 'CHALLENGED' | 'SKIP'
@@ -112,25 +110,18 @@ async function main(): Promise<void> {
       : `AUTHENTICATED (token length ${me.token.length})`
   })
 
+  // The venue stopped serving this path (it answers "unknown path" and closes); the
+  // REST POST /quotes/simple check above covers the unrounded mark instead.
+  record('ws /quotes/simple', 'SKIP', 'no longer served by the venue (docs/API.md)')
+
   if (!withWs) {
     record('ws /prices', 'SKIP', '--no-ws')
-    record('ws /quotes/simple', 'SKIP', '--no-ws')
   } else {
     await check('ws /prices', async () => {
       const feed = new PricesFeed({ wsBaseUrl: DEFAULT_WS_URL })
       try {
         const tick = await firstEvent<PricesFeedEvents, 'mark'>(feed, 'mark', 15_000)
         return `${tick.key} price=${tick.price}`
-      } finally {
-        feed.stop()
-      }
-    })
-
-    await check('ws /quotes/simple', async () => {
-      const feed = new QuotesFeed({ wsBaseUrl: DEFAULT_WS_URL, instrument: BTC, qty: '0.001' })
-      try {
-        const { quote } = await firstEvent<QuotesFeedEvents, 'quote'>(feed, 'quote', 15_000)
-        return `mark=${quote.mark_price ?? '?'} index=${quote.index_price ?? '?'}`
       } finally {
         feed.stop()
       }

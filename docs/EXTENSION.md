@@ -15,7 +15,9 @@ When you open its popup (or press **Re-check**), it:
    cookies that page JavaScript cannot see.
 2. Drops Cloudflare cookies (`__cf*`, `_cfuvid`, `cf_*`) and analytics cookies (`_ga*`,
    `_dd_*`, `intercom-*`, `mp_*`, ...), which are not part of the session. The popup lists
-   what it dropped.
+   what it dropped. It uses the same list as the client's `cleanCookieHeader`
+   ([AUTH.md](AUTH.md#option-2-copy-the-cookies-from-devtools)), so both give the same
+   cookie header.
 3. Calls `GET https://omni.variational.io/api/me` and keeps only its `token` field (the
    JWT), which says whether you are signed in, as which address, and until when.
 4. Shows the address, expiry and number of session cookies, and enables the export
@@ -40,12 +42,13 @@ pnpm install
 pnpm build:extension        # writes extension/dist
 ```
 
-1. Open `chrome://extensions` (Edge: `edge://extensions`).
+1. Open `chrome://extensions` (Edge: `edge://extensions`, Brave: `brave://extensions`).
 2. Turn on **Developer mode** (top right).
 3. Click **Load unpacked** and select the `extension/dist` folder.
 4. Optional: pin it from the puzzle-piece menu so the icon stays in the toolbar.
 
-It is not on the Chrome Web Store; loading it unpacked is the intended way.
+It is not on the Chrome Web Store; loading it unpacked is the intended way. Firefox is
+not supported.
 
 ## Using it
 
@@ -53,8 +56,8 @@ Sign in at <https://omni.variational.io> as usual, then click the extension icon
 
 | button | what happens |
 |---|---|
-| **Copy session JSON** | Puts the `session.json` contents on your clipboard. Paste them into a file, or into `VARIATIONAL_COOKIES` in `.env` (it accepts a whole session as JSON). |
-| **Download session.json** | Saves the same JSON as `session.json` through the browser's normal download. Move it into the repo root, then run `pnpm session:check`. If a `session.json` is already in your Downloads folder the browser may rename the new one (`session (1).json`); rename it back. |
+| **Copy session JSON** | Puts the session on your clipboard as **one line** of JSON. Paste it into a file named `session.json`, or after `VARIATIONAL_COOKIES=` in `.env` (`.env` takes one line per variable, which is why this copy is not pretty-printed). |
+| **Download session.json** | Saves the same session, pretty-printed, as `session.json` through the browser's normal download. Move it into the repo root, then run `pnpm session:check`. If a `session.json` is already in your Downloads folder the browser may rename the new one (`session (1).json`); rename it back. If the download fails (for example with "Ask where to save each file" turned on, the save dialog can close the popup mid-download), use **Copy session JSON** and save the file yourself. |
 | **Re-check** | Reads the cookies and `/api/me` again, for example after you sign in. |
 
 The export buttons stay disabled while there is nothing to export: you are signed out,
@@ -148,7 +151,12 @@ Every permission the extension asks for, and why:
 | host `https://omni.variational.io/*` | Scopes the cookie access to this one site and lets the extension call `GET /api/me`. With no other host granted, no other site's cookies are readable. |
 | `storage` | Keeps the Push to server settings and the last status in `chrome.storage.local`, on this device only. Never `storage.sync`, which would copy the bearer token to every browser signed in to your Google account. |
 | `alarms` | Runs the periodic re-check while Push is on. A Manifest V3 background worker is stopped when idle, and alarms are the only way to wake it on a schedule. Unused while Push is off. |
-| optional: your server's origin | Requested only when you save a Push server URL, and only for that host. Never granted if you do not use Push. |
+| optional: your server's origin | Requested only when you save a Push server URL, and only for that host. Never granted if you do not use Push. When you change the URL or turn Push off, the extension gives back access to the old server. |
+
+The manifest lists `https://*/*`, `http://localhost/*` and `http://127.0.0.1/*` under
+`optional_host_permissions`. That is what lets the extension *ask* for whichever server
+you choose; nothing in that list is granted until you approve the single origin you
+saved, and Chrome shows that exact origin in its prompt.
 
 Not requested: `tabs`, `scripting`, `webRequest`, `downloads` (the file is saved through
 an ordinary download link), `history`, `<all_urls>`, and no content scripts.

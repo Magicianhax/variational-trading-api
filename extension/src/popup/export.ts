@@ -11,7 +11,7 @@
  * a network round-trip first could outlive.
  */
 
-import { type SessionBundle, serializeBundle } from '../shared/bundle.js'
+import { type SessionBundle, serializeBundle, serializeBundleOneLine } from '../shared/bundle.js'
 import { SESSION_FILE_NAME } from '../shared/constants.js'
 
 export interface ClipboardLike {
@@ -19,7 +19,7 @@ export interface ClipboardLike {
 }
 
 export async function copyBundle(bundle: SessionBundle, clipboard: ClipboardLike): Promise<void> {
-  await clipboard.writeText(serializeBundle(bundle))
+  await clipboard.writeText(serializeBundleOneLine(bundle))
 }
 
 export interface AnchorLike {

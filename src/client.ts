@@ -48,7 +48,7 @@ import { loadSession } from './session-io.js'
 import type { Side } from './types.js'
 import { bpsToFraction, toWireSide } from './wire.js'
 
-/** Default private API root. Same-origin `/api` in the browser; absolute from a VPS. */
+/** Default private API root. Same-origin `/api` in the browser; absolute when run outside it. */
 export const DEFAULT_API_BASE = 'https://omni.variational.io/api'
 
 /** The public host. Serves ONLY `/metadata/stats`; every other route 404s. */
@@ -355,6 +355,10 @@ export class OmniClient {
    *
    * Captcha is a new-account/invite gate: an existing account's login sends
    * neither `captchaToken` nor the `cf-turnstile-*` headers.
+   *
+   * NOT dry-run gated: signing in moves no money, and gating it made the SIWE login
+   * impossible on a default client (dry run returned `{ token: '' }` and sent nothing).
+   * `logout` stays gated because it destroys a session.
    */
   async login(args: {
     address: string
@@ -385,8 +389,6 @@ export class OmniClient {
       headers,
       schema: S.loginResultSchema,
       rateClass: 'auth',
-      mutating: true,
-      dryRunResult: () => ({ token: '' }),
     })
     this.setToken(result.token)
     this.address = args.address

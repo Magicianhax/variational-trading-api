@@ -39,6 +39,12 @@ describe('copyBundle', () => {
     expect(JSON.parse(String(writeText.mock.calls[0]?.[0]))).toEqual(EXPECTED)
   })
 
+  it('copies ONE line, so it survives being pasted into a .env file', async () => {
+    const writeText = vi.fn(async (_text: string) => undefined)
+    await copyBundle(BUNDLE, { writeText })
+    expect(String(writeText.mock.calls[0]?.[0])).not.toMatch(/[\r\n]/)
+  })
+
   it('propagates a refused clipboard write so the popup can say so', async () => {
     const writeText = vi.fn(async () => {
       throw new Error('Document is not focused.')

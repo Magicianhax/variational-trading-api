@@ -20,10 +20,9 @@
  * shim is not an optimisation — without it every request 403s before it reaches the
  * venue.
  *
- * `curl` is chosen over `curl-impersonate` because it is already present on every
- * Linux box and most dev machines, needs no native build, and currently passes. If
- * Cloudflare tightens further, swap `CURL_BIN` for a `curl-impersonate` build: the
- * argument construction is deliberately compatible.
+ * The system `curl` is used as itself: it is present on most machines, needs no native
+ * build, and presents its own TLS stack honestly. Nothing here imitates a browser's
+ * TLS fingerprint.
  *
  * Cost is one process spawn per request (~10-30 ms) — negligible next to the rate
  * limiter's budget and to the 0.1 s cadence the venue evaluates triggers at.
@@ -31,8 +30,9 @@
 
 import { execFile } from 'node:child_process'
 import { BROWSER_USER_AGENT, type FetchLike } from './http.js'
+import { redactText } from './redact.js'
 
-/** Overridable so a `curl-impersonate` build can be dropped in via env. */
+/** Overridable for systems where curl is not on PATH or a newer build is installed elsewhere. */
 const CURL_BIN = process.env['CURL_BIN'] ?? 'curl'
 
 /** Max response bytes accepted from a single call. `/metadata/stats` is ~1.5 MB. */
@@ -75,14 +75,43 @@ function headerEntries(init: RequestInit): Array<[string, string]> {
   return Object.entries(h as Record<string, string>).map(([k, v]) => [k, String(v)])
 }
 
+/** One curl invocation: a command line with nothing secret in it, and a config for stdin. */
+export type CurlInvocation = {
+  /** argv. Visible to every local user through the process list, so never a credential. */
+  args: string[]
+  /**
+   * A curl config file (`--config -`) carrying the request headers and body. Headers
+   * include the session cookie and bodies include signed login messages; on Linux and
+   * macOS any local user can read another process's argv (`ps`, /proc/<pid>/cmdline)
+   * while it runs, but not its stdin.
+   */
+  config: string
+}
+
+/** Quote a value for a curl config file: double quotes, backslash escapes. */
+function configValue(value: string): string {
+  const escaped = value
+    .replaceAll('\\', '\\\\')
+    .replaceAll('"', '\\"')
+    .replaceAll('\n', '\\n')
+    .replaceAll('\r', '\\r')
+    .replaceAll('\t', '\\t')
+  return `"${escaped}"`
+}
+
 /**
- * Builds the argv for one request. Exported so the header-ordering rule below can be
- * asserted in tests without spawning a process or touching the network — the rule is
- * invisible to the type system and its failure mode is a silent 403.
+ * Builds one request. Exported so the header-ordering rule below can be asserted in
+ * tests without spawning a process or touching the network — the rule is invisible to
+ * the type system and its failure mode is a silent 403.
  */
-export function buildCurlArgs(url: string, init: RequestInit, timeoutMs: number): string[] {
+export function buildCurlInvocation(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): CurlInvocation {
   const method = (init.method ?? 'GET').toUpperCase()
   const entries = headerEntries(init)
+  const config: string[] = []
 
   const args = [
     '--silent',
@@ -117,7 +146,8 @@ export function buildCurlArgs(url: string, init: RequestInit, timeoutMs: number)
     // curl sends `Accept: */*`, as a browser does. Overriding it to application/json
     // reliably draws a challenge (403 on five of five runs), so refuse to set it.
     if (name.toLowerCase() === 'accept') continue
-    args.push('--header', `${name}: ${value}`)
+    // A config `header` line is the same option as `--header`, so curl orders it the same.
+    config.push(`header = ${configValue(`${name}: ${value}`)}`)
   }
 
   const body = init.body
@@ -125,38 +155,22 @@ export function buildCurlArgs(url: string, init: RequestInit, timeoutMs: number)
     if (typeof body !== 'string') {
       throw new TypeError(`curl transport supports string bodies only, received ${typeof body}`)
     }
-    // `--data-raw` so a leading '@' in a body is never read as a filename.
-    args.push('--data-raw', body)
+    // `data-raw` so a leading '@' in a body is never read as a filename.
+    config.push(`data-raw = ${configValue(body)}`)
   }
 
-  args.push('--url', url)
-  return args
-}
-
-/**
- * Anything that looks like a credential, wherever it came from.
- *
- * `cookie:` headers and JWTs are the two shapes the venue session takes on the wire.
- * This is the belt to the braces below: the message is already assembled from safe
- * parts, and this catches anything a future code path lets through.
- */
-function scrubSecrets(text: string): string {
-  return text
-    .replace(/\bcookie:\s*[^\r\n]*/gi, 'cookie: ***')
-    .replace(/\b(vr-token[^=\s]*|vr-connected-address)=\S+/gi, '$1=***')
-    .replace(/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '***')
+  // Read the headers and body from stdin, after the flags above.
+  args.push('--config', '-', '--url', url)
+  return { args, config: config.length === 0 ? '' : `${config.join('\n')}\n` }
 }
 
 /**
  * The message for a curl transport failure, built from safe parts ONLY.
  *
- * The session is a credential and must never reach a log line.
- * curl runs under execFile, and Node composes its failure message as
- * "Command failed: <bin> <every arg>" -- and the args carry
- * `--header cookie: vr-token=<JWT>`. That string became the circuit breaker's
- * `lastReason`, which `/health` returns and the WebSocket broadcasts, so a single DNS
- * blip put the live session JWT into the browser, the audit log, and any screenshot of
- * the terminal.
+ * The session is a credential and must never reach a log line. curl runs under
+ * execFile, and Node composes its failure message as "Command failed: <bin> <every
+ * arg>". The cookie now travels on stdin rather than argv, but if that message reaches
+ * a log, a health endpoint or a UI, anything ever added to argv would leak with it.
  *
  * So `error.message` is never used. What curl printed on stderr is the diagnostic that
  * actually matters ("Could not resolve host"), and the exit code covers the silent case.
@@ -169,7 +183,9 @@ export function transportErrorMessage(
   stderr: string,
 ): string {
   const err = (error ?? {}) as { code?: unknown; signal?: unknown; killed?: unknown }
-  const printed = scrubSecrets(stderr.trim())
+  // Belt to the braces: the message is assembled from safe parts, and this catches
+  // anything a future code path (or a chatty curl build) lets through.
+  const printed = redactText(stderr.trim())
   const parts: string[] = []
   if (printed !== '') parts.push(printed)
   if (err.killed === true) parts.push('killed')
@@ -184,7 +200,7 @@ export function transportErrorMessage(
 export type CurlTransportOptions = {
   /** Hard ceiling per request. The caller's AbortSignal still applies on top. */
   timeoutMs?: number
-  /** Overrides the binary; useful for pointing at `curl-impersonate`. */
+  /** Overrides the binary (default: `CURL_BIN`, else `curl` on PATH). */
   bin?: string
 }
 
@@ -203,9 +219,9 @@ export function createCurlTransport(options: CurlTransportOptions = {}): FetchLi
   return function curlFetch(url: string, init: RequestInit): Promise<Response> {
     const method = (init.method ?? 'GET').toUpperCase()
 
-    let args: string[]
+    let invocation: CurlInvocation
     try {
-      args = buildCurlArgs(url, init, timeoutMs)
+      invocation = buildCurlInvocation(url, init, timeoutMs)
     } catch (error) {
       return Promise.reject(error instanceof Error ? error : new Error(String(error)))
     }
@@ -213,7 +229,7 @@ export function createCurlTransport(options: CurlTransportOptions = {}): FetchLi
     return new Promise<Response>((resolve, reject) => {
       const child = execFile(
         bin,
-        args,
+        invocation.args,
         { maxBuffer: MAX_BUFFER, encoding: 'utf8', windowsHide: true },
         (error, stdout, stderr) => {
           if (signal !== undefined) signal.removeEventListener('abort', onAbort)
@@ -250,6 +266,11 @@ export function createCurlTransport(options: CurlTransportOptions = {}): FetchLi
           resolve(new Response(nullBody ? null : rawBody, { status, headers }))
         },
       )
+
+      // A spawn failure closes stdin under us; that error is already reported through
+      // the execFile callback, so an EPIPE here must not become an uncaught exception.
+      child.stdin?.on('error', () => {})
+      child.stdin?.end(invocation.config)
 
       const signal = init.signal ?? undefined
       const onAbort = (): void => {

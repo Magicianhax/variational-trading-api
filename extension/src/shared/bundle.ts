@@ -49,6 +49,15 @@ export function serializeBundle(bundle: SessionBundle): string {
 }
 
 /**
+ * The clipboard form: the same JSON on ONE line, with no trailing newline. People paste
+ * it into `.env` as `VARIATIONAL_COOKIES=...`, and .env readers take one line per
+ * variable, so a pretty-printed copy would arrive as just `{`.
+ */
+export function serializeBundleOneLine(bundle: SessionBundle): string {
+  return JSON.stringify(bundle)
+}
+
+/**
  * Canonical string used for change detection. Includes only the credential —
  * the derived claims follow from the token, so they add nothing.
  */

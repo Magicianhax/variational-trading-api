@@ -10,6 +10,7 @@
 import type { SessionBundle } from '../shared/bundle.js'
 import { OMNI_HOST_PERMISSION } from '../shared/constants.js'
 import type { ExporterRequest, ExporterResponse, ExporterState } from '../shared/messages.js'
+import { staleOrigins } from '../shared/origins.js'
 import { DEFAULT_SETTINGS, resolveServerTarget, type Settings } from '../shared/settings.js'
 import {
   formatDuration,
@@ -334,8 +335,14 @@ dom.form.addEventListener('submit', (event) => {
     dom.saveDetail.textContent = 'Fix the server URL first.'
     return
   }
-  const save = () => withBusy(dom.saveDetail, () => send({ type: 'saveSettings', settings }))
   const target = settings.pushEnabled ? resolveServerTarget(settings.serverUrl) : null
+  const keep = target?.ok === true ? target.target.originPattern : null
+  const save = () =>
+    withBusy(dom.saveDetail, async () => {
+      const result = await send({ type: 'saveSettings', settings })
+      await releaseStaleOrigins(keep)
+      return result
+    })
   if (target === null || !target.ok) {
     void save()
     return
@@ -348,6 +355,21 @@ dom.form.addEventListener('submit', (event) => {
     () => void save(),
   )
 })
+
+/**
+ * Give back host access to push servers the settings no longer name. Best effort: a
+ * failure here leaves an unused grant, which the user can still revoke under the
+ * extension's Site access.
+ */
+async function releaseStaleOrigins(keep: string | null): Promise<void> {
+  try {
+    const { origins = [] } = await chrome.permissions.getAll()
+    const stale = staleOrigins(origins, keep, [OMNI_HOST_PERMISSION])
+    if (stale.length > 0) await chrome.permissions.remove({ origins: stale })
+  } catch {
+    /* see above */
+  }
+}
 
 dom.grant.addEventListener('click', () => {
   const origin = dom.grant.dataset['origin']

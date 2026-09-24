@@ -1,13 +1,18 @@
 # Reaching Variational from code
 
-Three things stop a bot before it sends a single order. Each has a way through, and the
-client ships it.
+This page is about reaching **your own account** from your own code, the way the web app
+does. Use this client only with your own account and in line with Variational's Terms of
+Service. Do not use it to get around rate limits or access controls: if the venue refuses
+a kind of client, respect that.
 
-## 1. Cloudflare fingerprints TLS — Node cannot connect at all
+Three things decide whether a request from code gets an answer. This page says what each
+one is and what the client does about it.
 
-`omni.variational.io/api/*` sits behind Cloudflare Bot Management, which scores the
-**TLS/JA3 fingerprint** and **header order**, not just header values. Measured from a
-residential IP:
+## 1. Node's own HTTP client is refused
+
+`omni.variational.io/api/*` sits behind Cloudflare Bot Management, which looks at the
+client's **TLS handshake** and **header order**, not just header values. Measured from a
+home (residential) connection:
 
 | client | headers | result |
 |---|---|---|
@@ -16,37 +21,46 @@ residential IP:
 | node `fetch` (undici) | full Chrome set | 403 |
 | node `https` + Chrome cipher order | full Chrome set | 403 |
 
-**Way through:** `curlTransport` shells out to the system `curl` for every request.
-
-Two rules are load-bearing, and pinned by tests:
+**What the client does:** `curlTransport` runs the system `curl` for every request. curl
+connects as itself; nothing imitates a browser's TLS stack. Two details matter and are
+pinned by tests:
 
 - **The User-Agent goes through `--user-agent`, never `--header`.** curl appends
-  `--header` values after its own defaults, which puts the UA where no browser puts it.
-  Same URL, same value: `--header` → 403 five times out of five; `--user-agent` → 200
-  five out of five.
+  `--header` values after its own defaults, so a UA passed that way lands in an unusual
+  position. Same URL, same value: `--header` → 403 five times out of five;
+  `--user-agent` → 200 five out of five.
 - **Leave curl's default `Accept: */*` alone.** Overriding it to `application/json`
   reliably draws a challenge.
 
-By hand:
+The session cookie and request bodies are passed to curl on **stdin** (`--config -`), not
+on its command line, so other users on the same machine cannot read them from the
+process list.
+
+By hand, for a public endpoint:
 
 ```bash
 curl -s --user-agent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36' \
   'https://omni.variational.io/api/funding/v2?underlying=BTC&instrument_type=perpetual_future' | jq
 ```
 
-If Cloudflare tightens further, point `CURL_BIN` at a `curl-impersonate` build — the
-argument construction is compatible.
+`CURL_BIN` points the transport at a different curl binary, for example when `curl` is
+not on `PATH`.
 
-## 2. Datacenter IPs are challenged even with curl
+## 2. Cloud and datacenter IPs are challenged
 
-From a cloud/VPS IP, `/api/*` answers `403` with `cf-mitigated: challenge` (the "Just a
-moment…" interstitial) for **every** plain HTTP client, curl included. Reproduced across
-several hosting IPs and providers. The separate public stats host still answers.
+From a cloud server or other datacenter IP, `/api/*` answers `403` with
+`cf-mitigated: challenge` (the "Just a moment…" page) for plain HTTP clients, curl
+included. The separate public stats host still answers.
 
-A managed challenge is not a block — it's a test a real browser passes by running a
-script. **Way through:** `createBrowserTransport` drives a real Chromium through
-Playwright and runs the venue's own `fetch` inside the page. You supply the browser
-context (Playwright is not a dependency of this package):
+**Recommended setup: run the client from a home connection.** That is what the web app's
+users do, and it is what this client is tested from. Datacenter use may be blocked at any
+time, and that is the venue's call.
+
+If you do run on a server, `createBrowserTransport` drives a real, visible Chromium
+through Playwright and sends each request with the page's own `fetch`, so the browser
+answers Cloudflare's check the way it does for any person using the site. It does not
+hide that it is automated: no stealth plugins, no `navigator.webdriver` patching. You
+supply the browser context (Playwright is not a dependency of this package):
 
 ```ts
 import { chromium } from 'playwright'
@@ -72,23 +86,22 @@ await setBrowserCookies(ctx, cookies, 'omni.variational.io')
 const client = new OmniClient({ fetchImpl, cookies })
 ```
 
-What decides whether it works:
+What to know:
 
-- **Headed, not headless.** The headless shell is still challenged; the full browser is
-  not. On a server, run it under `xvfb-run`.
-- **Warm up on a small JSON path, not the app root.** The root pulls the whole bundle and
-  a burst of analytics requests — much more to clear.
-- **A challenged XHR can never clear itself.** The challenge HTML lands in a fetch
-  response with no document to run in; retrying just produces a 403 storm. A challenge
-  is cleared by a **navigation**. The transport detects `cf-mitigated: challenge`,
-  navigates, waits, and retries once.
+- **Headed, not headless.** The headless shell does not complete the check. On a server
+  without a display, run it under `xvfb-run`.
+- **Start on a small JSON path, not the app root.** The root loads the whole web app and
+  a burst of analytics requests.
+- **A check that lands on a background request cannot complete there.** The check page
+  arrives as a fetch response with no document to run in, and retrying the request only
+  repeats the 403. The transport detects `cf-mitigated: challenge`, loads the warm-up
+  page once so the check can run, and retries the request once.
 - **Don't import another machine's Cloudflare cookies.** `__cf_bm`, `_cfuvid` and
-  `cf_clearance` are bound to the client and network that earned them — injecting them
+  `cf_clearance` belong to the browser and network that received them. Injecting them
   turns a clean 401 into a 403. `setBrowserCookies` passes only the venue's `vr-*`
   session cookies.
-- **A stale profile is poison.** An old `__cf_bm` can mark the browser suspicious on every
-  request. `purgeNonSessionCookies` drops everything but `vr-*` at startup.
-- No stealth plugins, no `navigator.webdriver` forgery. It passes as itself.
+- **Start from a clean profile.** An old `__cf_bm` left in a persistent profile can make
+  every request fail. `purgeNonSessionCookies` drops everything but `vr-*` at startup.
 
 ## 3. Rate limits are unpublished; 418 is the tell
 
@@ -103,11 +116,12 @@ bucket so a burst of position polls can't eat the budget an emergency close need
 | `meta`, `auth` | 6 / 60 s |
 
 A **418** ("temporarily banned from orders") or **429** carries `{ wait_until_seconds }`;
-the transport suspends that whole class until then. The public stats host documents
+the transport suspends that whole class until then. Treat these as the venue asking you
+to slow down, not as something to route around. The public stats host documents
 10 requests / 10 s per IP.
 
-## Login is also challenged from datacenters
+## Signing in from a server
 
-`/auth/login` from a datacenter IP is challenged too. Log in somewhere residential and
-carry the session over (a session is just cookies + a JWT; see [AUTH.md](AUTH.md)). That
-has a real upside: the wallet key never has to live on the server.
+`/auth/login` from a datacenter IP is challenged too. Sign in from home and carry the
+session over (a session is just cookies; see [AUTH.md](AUTH.md)). That has a real upside:
+the wallet key never has to live on the server.

@@ -1,8 +1,14 @@
 /**
- * `/quotes/simple` over WebSocket — undocumented, unauthenticated, and the best
- * mark-price source the venue has.
+ * `/quotes/simple` over WebSocket — undocumented and unauthenticated.
  *
- * Live-verified behaviour:
+ * NO LONGER SERVED (checked 2026-09-24). The server now opens the socket, sends the
+ * text frame "unknown path, must be '/events', '/portfolio', '/prices', or
+ * '/market_status'" and closes it. {@link QuotesFeed} treats that frame as fatal: it
+ * emits `unsupported` and stops, instead of reconnecting forever to a venue that
+ * bans with HTTP 418. For an unrounded mark, poll REST `client.quoteSimple()`.
+ * The class stays exported so existing callers fail loudly rather than at import.
+ *
+ * Behaviour when it was served:
  *  - Send `{instrument, qty}` and it streams a full quote at ~1 Hz until you
  *    replace it.
  *  - ONE STREAM PER SOCKET: a second `{instrument, qty}` SWITCHES the stream, it
@@ -38,6 +44,11 @@ import { ManagedSocket, type SocketState, type WebSocketFactory } from './socket
 
 export type QuotesFeedEvents = {
   quote: { key: InstrumentKey; quote: Quote }
+  /**
+   * Terminal: the server does not serve this path. The feed has already stopped
+   * and will not reconnect.
+   */
+  unsupported: { key: InstrumentKey; message: string }
   /** Unrounded mark. Prefer this over `/prices`, which is display-rounded. */
   mark: MarkTick
   venueError: { error: unknown }
@@ -96,7 +107,7 @@ export class QuotesFeed extends Emitter<QuotesFeedEvents> {
     })
 
     this.socket.on('message', (frame) => this.handleFrame(frame))
-    this.socket.on('text', (text) => this.logger.warn('quotes.text', { key: this.key, text }))
+    this.socket.on('text', (text) => this.handleText(text))
     this.socket.on('open', () => this.emit('open', undefined))
     this.socket.on('close', (e) => this.emit('close', e))
     this.socket.on('error', (e) => this.emit('error', e))
@@ -130,6 +141,19 @@ export class QuotesFeed extends Emitter<QuotesFeedEvents> {
     this.socket.send({ instrument: this.instrument, qty: this.qty })
   }
 
+  private handleText(text: string): void {
+    this.logger.warn('quotes.text', { key: this.key, text })
+    /*
+     * Reconnecting cannot fix a path the server does not have, and every attempt is
+     * another request against a venue that answers floods with a 418 ban. Stop first,
+     * then tell the caller, so a listener that restarts the feed sees a clean state.
+     */
+    if (UNKNOWN_PATH.test(text)) {
+      this.socket.stop()
+      this.emit('unsupported', { key: this.key, message: text })
+    }
+  }
+
   private handleFrame(frame: unknown): void {
     const asError = wsErrorFrameSchema.safeParse(frame)
     if (asError.success && asError.data.error !== undefined) {
@@ -161,6 +185,8 @@ export class QuotesFeed extends Emitter<QuotesFeedEvents> {
   }
 }
 
+const UNKNOWN_PATH = /unknown path/i
+
 /**
  * One {@link QuotesFeed} per instrument, because the path does not multiplex.
  * The pool re-emits every child's `mark` on a single surface, so a caller subscribes
@@ -184,6 +210,7 @@ export class QuotesFeedPool extends Emitter<QuotesFeedEvents> {
     const feed = new QuotesFeed({ ...this.options, instrument, qty })
     feed.on('quote', (p) => this.emit('quote', p))
     feed.on('mark', (p) => this.emit('mark', p))
+    feed.on('unsupported', (p) => this.emit('unsupported', p))
     feed.on('venueError', (p) => this.emit('venueError', p))
     feed.on('schemaDrift', (p) => this.emit('schemaDrift', p))
     feed.on('open', () => this.emit('open', undefined))

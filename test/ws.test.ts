@@ -38,7 +38,7 @@ describe('ManagedSocket', () => {
     expect(delays[delays.length - 1]).toBeLessThanOrEqual(60_000)
   })
 
-  it('resets the backoff after a successful open', () => {
+  it('resets the backoff once an open connection delivers a JSON frame', () => {
     const clock = new FakeClock()
     const delays: number[] = []
     const socket = new ManagedSocket({
@@ -56,10 +56,62 @@ describe('ManagedSocket', () => {
     FakeSocket.last.serverClose()
     clock.advance(2_000)
     FakeSocket.last.serverOpen()
+    FakeSocket.last.serverSend({ type: 'heartbeat', timestamp: '2026-09-24T00:00:00Z' })
     FakeSocket.last.serverClose()
     clock.advance(10)
 
     expect(delays).toEqual([0, 1_000, 0])
+  })
+
+  it('resets the backoff once an open connection has stayed up for stableMs', () => {
+    const clock = new FakeClock()
+    const delays: number[] = []
+    const socket = new ManagedSocket({
+      url: WS,
+      name: 't',
+      factory: fakeFactory,
+      silenceMs: 0,
+      stableMs: 5_000,
+      ...timers(clock),
+    })
+    socket.on('reconnect', (r) => delays.push(r.delayMs))
+
+    socket.start()
+    FakeSocket.last.serverClose()
+    clock.advance(10)
+    FakeSocket.last.serverOpen()
+    clock.advance(5_001)
+    FakeSocket.last.serverClose()
+
+    expect(delays).toEqual([0, 0])
+  })
+
+  /*
+   * Regression: a path the server does not serve OPENS, sends one text frame and
+   * closes. Resetting the backoff on OPEN turned that into ~1 reconnect every 2 s,
+   * forever, against a venue that bans floods with 418.
+   */
+  it('keeps backing off when every connection opens and closes without data', () => {
+    const clock = new FakeClock()
+    const delays: number[] = []
+    const socket = new ManagedSocket({
+      url: WS,
+      name: 't',
+      factory: fakeFactory,
+      silenceMs: 0,
+      ...timers(clock),
+    })
+    socket.on('reconnect', (r) => delays.push(r.delayMs))
+
+    socket.start()
+    for (let i = 0; i < 5; i++) {
+      FakeSocket.last.serverOpen()
+      FakeSocket.last.serverSend('unknown path')
+      FakeSocket.last.serverClose()
+      // Just long enough for the scheduled reconnect to fire, not for a connect timeout.
+      clock.advance(delays[delays.length - 1] ?? 0)
+    }
+    expect(delays).toEqual([0, 1_000, 2_000, 4_000, 8_000])
   })
 
   it('abandons a handshake that stalls past the connect timeout', () => {
@@ -399,6 +451,30 @@ describe('QuotesFeed', () => {
     FakeSocket.last.serverOpen()
     FakeSocket.last.serverSend({ error: 'qty too large' })
     expect(errors).toEqual(['qty too large'])
+  })
+
+  it('stops for good, and says so, when the server no longer serves the path', () => {
+    const clock = new FakeClock()
+    const f = new QuotesFeed({
+      wsBaseUrl: WS,
+      instrument: { symbol: 'BTC' },
+      qty: '0.001',
+      factory: fakeFactory,
+      ...timers(clock),
+    })
+    const unsupported: string[] = []
+    f.on('unsupported', (e) => unsupported.push(e.message))
+    f.start()
+    FakeSocket.last.serverOpen()
+    FakeSocket.last.serverSend(
+      "unknown path, must be '/events', '/portfolio', '/prices', or '/market_status'",
+    )
+    FakeSocket.last.serverClose()
+    clock.advance(120_000)
+
+    expect(unsupported).toHaveLength(1)
+    expect(f.state).toBe('closed')
+    expect(FakeSocket.instances).toHaveLength(1)
   })
 
   it('pools one socket per instrument, because the path does not multiplex', () => {

@@ -74,10 +74,10 @@ import { CookieJar } from '../src/http.js'
 
 describe('mintSessionViaSiwe against the real cookie jar', () => {
   /*
-   * The fake above has always had a `serialize`; the real CookieJar did not, and the
-   * production callers cast the client to `never` to get past the type error. So the
-   * one path that renews an expired session on the VPS threw a TypeError every time.
-   * This pins the real jar to the contract the function actually calls.
+   * The fake above has always had a `serialize`; the real CookieJar once did not, and a
+   * caller that cast the client to `never` to get past the type error threw a TypeError
+   * every time it tried to renew an expired session. This pins the real jar to the
+   * contract the function actually calls.
    */
   it('serialises the jar into the bundle instead of throwing', () => {
     const jar = new CookieJar()

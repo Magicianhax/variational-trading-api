@@ -20,7 +20,7 @@ import {
   type SessionBundle,
   TransportError,
 } from '../dist/index.js'
-import { loadEnv } from '../examples/_env.ts'
+import { resolveSessionSource, type SessionSource } from '../examples/_env.ts'
 
 const HOW_TO_GET_ONE = [
   'Get a session one of three ways (docs/AUTH.md):',
@@ -49,20 +49,16 @@ function remaining(ms: number): string {
   return d > 0 ? `${d}d ${h}h ${m}m` : h > 0 ? `${h}h ${m}m` : `${m}m`
 }
 
-/** Where the session comes from, in the documented order. The label never holds a secret. */
-function findSource(): { source: string; label: string } {
+/**
+ * Where the session comes from: the same resolver the examples use, so a session this
+ * script reports OK is the session they run with. The label never holds a secret.
+ */
+function findSource(): SessionSource {
   const arg = process.argv[2]
-  if (arg !== undefined && arg !== '') {
-    if (!existsSync(arg)) fail(`no file at ${arg}`, HOW_TO_GET_ONE)
-    return { source: arg, label: arg }
-  }
-  if (existsSync('session.json')) return { source: 'session.json', label: './session.json' }
-  loadEnv()
-  const env = process.env['VARIATIONAL_COOKIES']?.trim()
-  if (env) return { source: env, label: 'VARIATIONAL_COOKIES' }
-  return fail(
-    'no session found (no ./session.json, VARIATIONAL_COOKIES is not set).',
-    HOW_TO_GET_ONE,
+  if (arg !== undefined && arg !== '' && !existsSync(arg)) fail(`no file at ${arg}`, HOW_TO_GET_ONE)
+  return (
+    resolveSessionSource(arg) ??
+    fail('no session found (no ./session.json, VARIATIONAL_COOKIES is not set).', HOW_TO_GET_ONE)
   )
 }
 

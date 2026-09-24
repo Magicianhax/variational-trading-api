@@ -3,6 +3,7 @@ import { OmniClient } from '../src/client.js'
 import { InvalidRequestError } from '../src/errors.js'
 import { instrumentKey } from '../src/instrument.js'
 import { orderSchema } from '../src/schemas.js'
+import { mintSessionViaSiwe } from '../src/session.js'
 import { FakeClock, FakeFetch, fixture } from './helpers.js'
 
 function client(fetch: FakeFetch, options: { dryRun?: boolean } = {}) {
@@ -22,6 +23,9 @@ function client(fetch: FakeFetch, options: { dryRun?: boolean } = {}) {
 }
 
 const BTC = { symbol: 'BTC', instrument_type: 'perpetual_future' as const }
+
+/** The web3.js documentation test-vector key: public, holds nothing. */
+const KEY = '0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318'
 
 describe('reads', () => {
   it('parses /positions and keeps the signed qty as the venue sent it', async () => {
@@ -539,5 +543,25 @@ describe('dry run at the client level', () => {
 
   it('defaults to dry-run when the option is omitted', () => {
     expect(new OmniClient().dryRun).toBe(true)
+  })
+
+  it('does not gate login, which moves no money, so SIWE works on a default client', async () => {
+    const signingData = { body: 'omni.variational.io wants you to sign in' }
+    const login = { body: { token: 'jwt.from.venue' }, headers: { 'set-cookie': 'vr-token=a' } }
+    const fetch = new FakeFetch().push(signingData, login)
+    const { client: c } = client(fetch, { dryRun: true })
+    const bundle = await mintSessionViaSiwe(c, KEY)
+    expect(fetch.calls.map((call) => new URL(call.url).pathname)).toEqual([
+      '/api/auth/generate_signing_data',
+      '/api/auth/login',
+    ])
+    expect(bundle.token).toBe('jwt.from.venue')
+  })
+
+  it('still gates logout, which destroys a session', async () => {
+    const fetch = new FakeFetch()
+    const { client: c } = client(fetch, { dryRun: true })
+    await c.logout('0xabc')
+    expect(fetch.count).toBe(0)
   })
 })

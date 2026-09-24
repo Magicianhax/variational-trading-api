@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildCurlArgs, transportErrorMessage } from '../src/curl-transport.js'
+import { buildCurlInvocation, transportErrorMessage } from '../src/curl-transport.js'
 import { BROWSER_USER_AGENT } from '../src/http.js'
 
 /**
@@ -16,8 +16,22 @@ import { BROWSER_USER_AGENT } from '../src/http.js'
  *   curl, UA via --user-agent                      -> 200 200 200 200 200
  *   curl, UA via --user-agent + accept: app/json   -> 403 403 403 403 403
  */
-describe('buildCurlArgs — Cloudflare header-order rules', () => {
+describe('buildCurlInvocation — Cloudflare header-order rules', () => {
   const url = 'https://omni.variational.io/api/metadata/config'
+  const buildCurlArgs = (u: string, init: RequestInit, timeoutMs: number): string[] =>
+    buildCurlInvocation(u, init, timeoutMs).args
+
+  /** Values of `key = "..."` lines in the stdin config, unescaped. */
+  function configValues(u: string, init: RequestInit, key: string): string[] {
+    const { config } = buildCurlInvocation(u, init, 30_000)
+    const out: string[] = []
+    for (const line of config.split('\n')) {
+      const prefix = `${key} = "`
+      if (!line.startsWith(prefix) || !line.endsWith('"')) continue
+      out.push(JSON.parse(line.slice(prefix.length - 1)) as string)
+    }
+    return out
+  }
 
   function pairs(args: string[], flag: string): string[] {
     const out: string[] = []
@@ -28,50 +42,63 @@ describe('buildCurlArgs — Cloudflare header-order rules', () => {
   }
 
   it('sends the User-Agent via --user-agent, never via --header', () => {
-    const args = buildCurlArgs(
-      url,
-      { method: 'GET', headers: { 'content-type': 'application/json' } },
-      30_000,
-    )
+    const init = { method: 'GET', headers: { 'content-type': 'application/json' } }
+    const args = buildCurlArgs(url, init, 30_000)
 
     expect(pairs(args, '--user-agent')).toEqual([BROWSER_USER_AGENT])
-    expect(pairs(args, '--header').some((h) => h.toLowerCase().startsWith('user-agent'))).toBe(
-      false,
-    )
+    expect(configValues(url, init, 'header')).toEqual(['content-type: application/json'])
+    expect(args).not.toContain('--header')
   })
 
   it('routes a caller-supplied User-Agent through --user-agent too, without duplicating it', () => {
-    const args = buildCurlArgs(
-      url,
-      { method: 'GET', headers: { 'user-agent': 'custom-shim/1.0', 'x-thing': 'a' } },
-      30_000,
-    )
+    const init = { method: 'GET', headers: { 'user-agent': 'custom-shim/1.0', 'x-thing': 'a' } }
+    const args = buildCurlArgs(url, init, 30_000)
 
     expect(pairs(args, '--user-agent')).toEqual(['custom-shim/1.0'])
-    expect(pairs(args, '--header')).toEqual(['x-thing: a'])
+    expect(configValues(url, init, 'header')).toEqual(['x-thing: a'])
   })
 
   it('never sets an Accept header, which draws a challenge', () => {
-    const args = buildCurlArgs(
+    const init = {
+      method: 'GET',
+      headers: { accept: 'application/json', 'content-type': 'application/json' },
+    }
+    const headers = configValues(url, init, 'header')
+
+    expect(headers.some((h) => h.toLowerCase().startsWith('accept'))).toBe(false)
+    expect(headers).toContain('content-type: application/json')
+  })
+
+  it('passes a POST body as data-raw so a leading @ is not read as a filename', () => {
+    const body = '@{"address":"0xabc","msg":"line1\nline2 \\"q\\" back\\slash"}'
+    const init = { method: 'POST', body }
+    const { args, config } = buildCurlInvocation(url, init, 30_000)
+
+    expect(configValues(url, init, 'data-raw')).toEqual([body])
+    expect(pairs(args, '--request')).toEqual(['POST'])
+    expect(config).not.toMatch(/^data\s*=/m)
+    expect(args).not.toContain('--data')
+  })
+
+  /*
+   * On Linux and macOS any local user can read another process's argv while it runs
+   * (`ps aux`, /proc/<pid>/cmdline). The session cookie and signed login bodies must
+   * therefore travel on stdin, never on the command line.
+   */
+  it('keeps the cookie and the body out of argv', () => {
+    const cookie = 'vr-token=SESSION-MARKER'
+    const body = '{"signed_message":"BODY-MARKER"}'
+    const { args, config } = buildCurlInvocation(
       url,
-      {
-        method: 'GET',
-        headers: { accept: 'application/json', 'content-type': 'application/json' },
-      },
+      { method: 'POST', headers: { cookie }, body },
       30_000,
     )
 
-    expect(pairs(args, '--header').some((h) => h.toLowerCase().startsWith('accept'))).toBe(false)
-    expect(pairs(args, '--header')).toContain('content-type: application/json')
-  })
-
-  it('passes a POST body via --data-raw so a leading @ is not read as a filename', () => {
-    const body = '@{"address":"0xabc"}'
-    const args = buildCurlArgs(url, { method: 'POST', body }, 30_000)
-
-    expect(pairs(args, '--data-raw')).toEqual([body])
-    expect(pairs(args, '--request')).toEqual(['POST'])
-    expect(args).not.toContain('--data')
+    expect(args.join(' ')).not.toContain('SESSION-MARKER')
+    expect(args.join(' ')).not.toContain('BODY-MARKER')
+    expect(pairs(args, '--config')).toEqual(['-'])
+    expect(config).toContain('SESSION-MARKER')
+    expect(config).toContain('BODY-MARKER')
   })
 
   it('never follows redirects', () => {
@@ -97,10 +124,10 @@ describe('transportErrorMessage — never leaks the session out of the process',
    * An error message once did exactly that.
    *
    * curl is invoked with execFile, and Node builds a failure message of the form
-   * "Command failed: <bin> <every arg>". The args carry `--header cookie: vr-token=<JWT>`.
-   * That string became the circuit breaker's `lastReason`, which /health returns and the
-   * WebSocket broadcasts -- so a DNS blip put the live session JWT in the browser, in the
-   * audit log, and in any screenshot of the terminal.
+   * "Command failed: <bin> <every arg>". When the cookie still travelled in argv, that
+   * message carried `--header cookie: vr-token=<JWT>`; if it reaches a log, a health
+   * endpoint or a UI, the session leaks with it. The cookie is on stdin now, but the
+   * message rule stays so nothing ever added to argv can leak this way.
    *
    * The message must therefore be built from safe parts only: what curl printed, and how
    * it exited. Never the command line.

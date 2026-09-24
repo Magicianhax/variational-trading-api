@@ -16,14 +16,22 @@ private key to use this client; see [docs/AUTH.md](docs/AUTH.md).
 
 ## Keeping them out of places they should not be
 
-- `.env`, `.env.*` (except `.env.example`), `session.json` and `*.session.json` are in
-  `.gitignore`. Keep them there, and check `git status` before every commit.
+- `.gitignore` covers `.env` and `.env.*` (except `.env.example`), `session*.json` (which
+  also catches a browser's `session (1).json`), `*.session.json`, `*.har` (DevTools
+  captures hold every cookie), and `*.pem`, `*.crx`, `*.zip` (a packed extension and its
+  signing key). Keep them there, and check `git status` before every commit.
 - **Never paste** a session, cookie header, token or key into a GitHub issue, pull request,
   discussion, chat or screenshot. When reporting a bug, `pnpm session:check` output is safe
   to share: it never prints cookie or token values. A `SchemaDriftError` body may contain
   account data; remove it first.
-- The client keeps credentials out of its log lines and error messages. If you ever see
-  one printed, that is a bug: report it privately (below).
+- The client keeps credentials out of its log lines and error messages, and masks tokens
+  and session cookies in the response bodies it keeps on errors (`ApiError.body`,
+  `SchemaDriftError.raw`). If you ever see one printed, that is a bug: report it
+  privately (below).
+- **Shared machines.** The curl transport passes the session cookie and request bodies
+  to curl on stdin, not on its command line, so other local users cannot read them from
+  the process list. Everything else about a shared machine still applies: anyone who can
+  read your files or your process's memory can read the session.
 - Do not leave exported copies in your Downloads folder or on the clipboard.
 - On a server, keep `session.json` readable only by the user that runs your code.
 
@@ -44,13 +52,15 @@ key can sign in again and controls the wallet itself.
 
 ## Dry run is the default
 
-- `dryRun` defaults to `true`. Every mutating call returns a synthetic ack and sends
-  nothing until you pass `dryRun: false` yourself.
+- `dryRun` defaults to `true`. Every mutating call (orders, quote accept, cancels,
+  close-all, leverage, isolate/deisolate, allocation, address switch, transfer-token
+  calls, logout) returns a synthetic ack and sends nothing until you pass `dryRun: false`
+  yourself. `login` is not gated: signing in moves no money.
 - The examples read `DRY_RUN`; anything other than the exact value `false` means dry run.
 - Mutating requests are never retried automatically, so a timeout never turns into a
   duplicate order. Reconcile against `getOrders()` / `getPositions()` after an error.
 - Start real trading with the smallest size the venue accepts
-  (`getConfig().min_order_notional`).
+  (`(await client.getConfig()).min_order_notional`).
 
 ## The browser extension
 
@@ -61,9 +71,9 @@ nothing anywhere unless you configure its optional Push to server. Permissions a
 ## Reporting a vulnerability
 
 Please report security problems **privately** to the repository owner, not in a public
-issue. If the repository has GitHub private vulnerability reporting enabled, use the
-**Security** tab → **Report a vulnerability**; otherwise contact the owner privately through
-their GitHub profile first and ask where to send details.
+issue. Use the **Security** tab → **Report a vulnerability** (GitHub private
+vulnerability reporting). If that button is missing, open a public issue that says only
+"security report, please enable private reporting", with no details, and wait for it.
 
 Include what you found, how to reproduce it, and what it exposes. Do not include real
 sessions, keys or account data. This is a personal, unofficial project: there is no bug

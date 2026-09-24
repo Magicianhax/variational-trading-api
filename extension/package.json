@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Unofficial MV3 browser extension that exports a signed-in omni.variational.io session as session.json.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.6"
   },
   "scripts": {
     "build": "tsc --noEmit && node scripts/build.mjs",

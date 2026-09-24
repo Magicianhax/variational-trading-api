@@ -72,7 +72,7 @@ describe('request building', () => {
     expect(BROWSER_USER_AGENT).toContain('Chrome/')
   })
 
-  it('lets defaultHeaders override the User-Agent for a stronger impersonation shim', async () => {
+  it('lets defaultHeaders override the User-Agent', async () => {
     const fetch = new FakeFetch().push({ body: { rfq_id: 'r1' } })
     const clock = new FakeClock()
     const http = new OmniHttp({

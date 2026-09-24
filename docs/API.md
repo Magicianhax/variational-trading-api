@@ -101,28 +101,36 @@ Variational is RFQ-based. **A market order needs a quote first.**
 ```jsonc
 { "quote_id": "…", "side": "buy", "max_slippage": 0.002, "is_reduce_only": false,
   // optional brackets riding along with an entry (not allowed when reduce-only):
-  "take_profit": "…", "tp_is_auto_resize": true, "tp_use_mark_price": true, "tp_slippage_limit": 0.01,
-  "stop_loss": "…",   "sl_is_auto_resize": true, "sl_use_mark_price": true, "sl_slippage_limit": 0.01 }
+  "take_profit": "…", "tp_is_auto_resize": true, "tp_use_mark_price": true, "tp_slippage_limit": "0.01",
+  "stop_loss": "…",   "sl_is_auto_resize": true, "sl_use_mark_price": true, "sl_slippage_limit": "0.01" }
 ```
 
-`/orders/new/limit` body — one endpoint for four order types:
+`max_slippage` is a JSON **number**; the bracket slippage limits are decimal **strings**.
+
+`/orders/new/limit` body — one endpoint for limit, trigger, take-profit and stop-loss:
 
 ```jsonc
-{ "order_type": "Limit" | "Trigger" | "TakeProfit" | "StopLoss",
+{ "order_type": "limit" | "take_profit" | "stop_loss",   // lower_snake on the wire
   "instrument": { /* OBJECT form */ },
   "qty": "0.5", "side": "sell",
-  "limit_price": "…",      // Limit / Trigger / TakeProfit
-  "trigger_price": "…",    // Trigger / TakeProfit / StopLoss
-  "slippage_limit": 0.01,
+  "limit_price": "…",      // limit (and so trigger); optional on stop_loss
+  "trigger_price": "…",    // take_profit, stop_loss
+  "slippage_limit": "0.01", // decimal STRING, fraction of 1
   "is_reduce_only": true, "is_auto_resize": true, "use_mark_price": true }
 ```
+
+There is no `"trigger"` order type on the wire. The web app's **Trigger** order is sent as
+`"order_type": "limit"` with `use_mark_price: true` and the level in `limit_price`
+(`placeLimitOrder({ ..., useMarkPrice: true })`). The client always sets
+`use_mark_price` explicitly, because the web app defaults it to `false`.
 
 Every mutating response carries **`rfq_id`**. The client refuses to proceed without one;
 use it for idempotency and to find the order in `/orders/v2`.
 
 ### Order semantics
 
-- Order types are **Market, Limit, Trigger, TakeProfit, StopLoss**. There is **no native
+- The web app's order types are **Market, Limit, Trigger, Take Profit, Stop Loss**. These
+  are UI labels, not wire values (the wire values are above). There is **no native
   trailing stop** (the `TrailingStop` string in the bundle belongs to the TradingView
   charting library, not the venue). Trailing must be emulated client-side.
 - Triggers are evaluated **every 0.1 s**; a cross shorter than that may not fire. On
@@ -132,7 +140,7 @@ use it for idempotency and to find the order in `/orders/v2`.
   for stops).
 - `is_auto_resize` rescales a TP/SL when the position is partly reduced. Without it a
   partial close can cancel the TP/SL entirely.
-- `StopLoss` is always sent reduce-only.
+- A stop loss is always sent reduce-only.
 - **There is no atomic replace.** Moving a stop is cancel + submit, which leaves a window
   with no protection. Reconcile after.
 - Reduce-only against a flat position is a **benign reject**
@@ -149,6 +157,12 @@ use it for idempotency and to find the order in `/orders/v2`.
 { "predicted_funding_rate": "0.031605", "next_funding_time": "2026-09-24T16:00:00Z", "funding_interval_s": 28800 }
 ```
 
+- **Unit.** Variational's own API docs call this a decimal ("multiply by 100 for
+  percentage") but do not say over what period. `0.031605` is therefore `3.1605%`, and it
+  is **unconfirmed** whether that is per funding interval or annualised. The magnitudes
+  seen across markets (BTC around ±0.03, small caps around ±0.15) and the venue's
+  documented cap of 2% per hour fit an annualised rate better than a per-interval one.
+  `TODO(live)`: compare with the funding figure the web app shows for the same market.
 - It is a **prediction** of the next payment and drifts live between calls. Not settled.
 - It is the **only** funding route. Time-range parameters (`start_time`, `end_time`,
   `limit`, `history`) are ignored — the same single value comes back. There is **no
@@ -172,7 +186,8 @@ Each of these fails silently or with an unhelpful error.
   omit it and carry `kind` instead.
 - **Slippage is a fraction of 1** — `0.005` = 0.5% — everywhere, including
   `/orders/close_all`'s `slippage_percent`. Never bps, never percent. The client takes
-  bps and converts.
+  bps and converts. `max_slippage` (market orders, quote accept) is a JSON number; the
+  limit-order and bracket slippage limits are decimal strings.
 - **Numbers are decimal strings** almost everywhere; `/metadata/v2/risk_limits` is the
   exception (JSON numbers). Prices and quantities must respect the quote's
   `min_qty_tick` and the precision rules in `/metadata/config` (at most 6 significant
@@ -195,13 +210,20 @@ does this).
 | path | auth | what |
 |---|---|---|
 | `/prices` | none | Mark prices for many instruments, ~1 Hz — **display-rounded** |
-| `/quotes/simple` | none | Full unrounded quote for ONE instrument, ~1 Hz |
 | `/events` | `{"claims": jwt}` | Cache-invalidation hints for your account |
 | `/portfolio` | `{"claims": jwt}` | Portfolio frames, ~4/s |
+| `/market_status` | ? | Served, but not mapped yet; the client has no feed for it |
 
-**Liveness.** The server heartbeats every 5 s on `/prices`, `/events` and `/portfolio`,
-but **not** on `/quotes/simple`, which is silent until asked. There are no RFC 6455
-ping/pongs — liveness is an inbound-silence watchdog.
+An unknown path still **opens**, then gets one text frame (`unknown path, must be
+'/events', '/portfolio', '/prices', or '/market_status'`) and a close. The client's
+sockets therefore reset their reconnect backoff only after a JSON frame or a connection
+that stays up, never on open alone.
+
+**Liveness.** The server heartbeats every 5 s on `/prices`, `/events` and `/portfolio`.
+There are no RFC 6455 ping/pongs — liveness is an inbound-silence watchdog.
+
+For an **unrounded** mark, poll REST `POST /quotes/simple` (`quoteSimple()`): its
+`mark_price` is full precision (`63346.7543455801`) where `/prices` gives `63346.75`.
 
 **`/prices`** (`PricesFeed`)
 
@@ -215,12 +237,10 @@ ping/pongs — liveness is an inbound-silence watchdog.
 - `pricing.timestamp` lags and **repeats** — dedupe on it, not on arrival. Measure
   staleness on arrival time.
 
-**`/quotes/simple`** (`QuotesFeed`, `QuotesFeedPool`)
-
-- Send `{ instrument, qty }`; it streams a full quote (`mark_price` unrounded, `index_price`,
-  `bid`, `ask`, a fresh `quote_id`) until replaced.
-- **One stream per socket** — a second request switches it rather than adding. Use one
-  socket per instrument (`QuotesFeedPool`).
+**`/quotes/simple` over WebSocket: retired.** The venue used to stream quotes on this
+path; since September 2026 it answers "unknown path" and closes. `QuotesFeed` and
+`QuotesFeedPool` are still exported, but they now emit `unsupported` and stop instead of
+reconnecting. Use REST `quoteSimple()` instead.
 
 **`/events`, `/portfolio`** (`EventsFeed`, `PortfolioFeed`)
 
@@ -236,6 +256,8 @@ Marked `TODO(live)` in the source where they matter:
 
 - Whether an anonymously minted `quote_id` (from `/quotes/simple`) is accepted by
   `/orders/new/market` or `/quotes/accept`.
+- The period of `predicted_funding_rate` (per interval or annualised; see Funding).
+- What `/market_status` streams.
 - Whether `scope: transfer:none` is enforced server-side.
 - Exact units of `/sub_accounts/allocation`'s `target_allocation` (almost certainly USDC).
 - A few response fields are declared from what the UI reads rather than from a capture;

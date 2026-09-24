@@ -4,7 +4,8 @@
  *   pnpm example examples/prices-ws.ts
  *
  * `/prices` multiplexes many instruments at ~1 Hz but rounds to display precision; for
- * an unrounded mark use QuotesFeed (docs/API.md → WebSocket).
+ * an unrounded mark, poll REST `client.quoteSimple()` (`mark_price`), which needs no
+ * session either (docs/API.md).
  */
 import { DEFAULT_WS_URL, PricesFeed } from '../dist/index.js'
 

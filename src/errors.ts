@@ -12,6 +12,7 @@
  */
 
 import type { $ZodIssue } from 'zod/v4/core'
+import { redactText, redactValue } from './redact.js'
 
 /** Root of the hierarchy. Every error this package throws is an `OmniError`. */
 export class OmniError extends Error {
@@ -30,8 +31,9 @@ export class OmniError extends Error {
 /**
  * The venue answered with a non-2xx status and a body we could read.
  *
- * `errorCode` is Omni's `error_code` discriminator (see the risk-check enum in
- * the recon notes); `body` is the parsed JSON (or raw text) exactly as received.
+ * `errorCode` is Omni's `error_code` discriminator (e.g. `skewLimitExceeded`; see
+ * docs/API.md); `body` is the parsed JSON (or raw text) as received, with credential
+ * values (tokens, JWTs, session cookies) masked so printing the error cannot leak them.
  */
 export class ApiError extends OmniError {
   readonly status: number
@@ -51,7 +53,7 @@ export class ApiError extends OmniError {
     super(args.message, args.endpoint, args.cause === undefined ? undefined : { cause: args.cause })
     this.status = args.status
     this.errorCode = args.errorCode
-    this.body = args.body
+    this.body = redactValue(args.body)
     this.headers = args.headers ?? {}
   }
 }
@@ -59,7 +61,7 @@ export class ApiError extends OmniError {
 /**
  * HTTP 429 (too many requests) or HTTP 418 (temporary order ban).
  *
- * Both carry `{ wait_until_seconds: N }` in the body per recon; `waitSeconds`
+ * Both carry `{ wait_until_seconds: N }` in the body; `waitSeconds`
  * is that value when present, otherwise a conservative default supplied by the
  * transport.
  */
@@ -89,7 +91,7 @@ export class RateLimitError extends ApiError {
 }
 
 /**
- * HTTP 401. Per recon the venue stamps `x-omni-auth: r` on responses that came
+ * HTTP 401. The venue stamps `x-omni-auth: r` on responses that came
  * out of the authenticated-session middleware; `sessionStamped` reflects that,
  * because a 401 *with* the stamp is the one that means "your session is dead"
  * rather than "this endpoint wants something else".
@@ -123,7 +125,9 @@ export const RAW_BODY_LIMIT = 16 * 1024
  * shape — a misread order or position is worse than no answer.
  *
  * Carries the endpoint, the zod issues, and the raw body (truncated) so the
- * drift can be diagnosed offline without a live reproduction.
+ * drift can be diagnosed offline without a live reproduction. Credential values in
+ * the body are masked first: a drift on `/me` would otherwise carry the live JWT
+ * into every terminal and bug report that prints the error.
  */
 export class SchemaDriftError extends OmniError {
   readonly issues: readonly $ZodIssue[]
@@ -141,7 +145,7 @@ export class SchemaDriftError extends OmniError {
       args.endpoint,
     )
     this.issues = issues
-    const raw = typeof args.raw === 'string' ? args.raw : safeStringify(args.raw)
+    const raw = redactText(typeof args.raw === 'string' ? args.raw : safeStringify(args.raw))
     this.rawTruncated = raw.length > RAW_BODY_LIMIT
     this.raw = this.rawTruncated ? raw.slice(0, RAW_BODY_LIMIT) : raw
   }

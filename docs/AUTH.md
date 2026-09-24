@@ -32,7 +32,13 @@ tested with ([ACCESS.md](ACCESS.md)).
 
 `loadSession(source)` and `OmniClient.fromSession(source)` accept any of: a path to a
 session file, the same JSON as a string, a `SessionBundle` object, or a raw cookie header.
-So `VARIATIONAL_COOKIES` may hold either a cookie header or the contents of `session.json`.
+One pair of wrapping quotes is ignored. So `VARIATIONAL_COOKIES` may hold either a cookie
+header or a session as JSON, **on one line**: `.env` takes one line per variable. The
+extension's **Copy session JSON** copies exactly that one line; a pretty-printed
+`session.json` belongs in a file, not in `.env`.
+
+`pnpm session:check` and the examples look for the session in one order: a path given on
+the command line, then `./session.json`, then `VARIATIONAL_COOKIES`.
 
 Facts worth knowing:
 
@@ -92,9 +98,12 @@ The request headers in the Network tab show exactly what the browser sends, Http
 cookies included.
 
 **Paste the whole header; the client cleans it.** The header also contains Cloudflare
-cookies (`__cf_bm`, `_cfuvid`, `cf_clearance`) and analytics cookies (`_ga`, `_dd_s`,
-`intercom-*`, ...). `loadSession` runs every header through `cleanCookieHeader`, which drops
-those and keeps the rest. That matters: Cloudflare cookies are bound to the browser and
+cookies (`__cf_bm`, `_cfuvid`, `cf_clearance`, any `cf_*` or `__cf*`) and analytics cookies
+(`_ga*`, `_gid`, `_fbp`, `_dd_*`, `ajs_*`, `amplitude*`, `intercom-*`, `_hj*`, `mp_*`, `ph_*`
+and more). `loadSession` runs every header through `cleanCookieHeader`, which drops those
+and keeps the rest. The full list is in
+[`src/cookie-policy.ts`](../src/cookie-policy.ts); the browser extension uses the same
+file, so both ways of exporting a session give the same cookie header. That matters: Cloudflare cookies are bound to the browser and
 network that earned them, and replaying them from another client turns a clean `401` into
 a `403` ([ACCESS.md](ACCESS.md)). A leading `cookie:` prefix is stripped too.
 
@@ -123,8 +132,12 @@ pnpm example examples/login-with-private-key.ts   # writes ./session.json
 ```ts
 import { curlTransport, mintSessionViaSiwe, OmniClient } from 'variational-trading-api'
 
+const key = process.env['VARIATIONAL_PRIVATE_KEY']
+if (key === undefined || key === '') throw new Error('set VARIATIONAL_PRIVATE_KEY')
+
+// Dry run can stay on: login moves no money, so it is not dry-run gated.
 const client = new OmniClient({ fetchImpl: curlTransport })
-const session = await mintSessionViaSiwe(client, process.env.VARIATIONAL_PRIVATE_KEY!)
+const session = await mintSessionViaSiwe(client, key)
 // session = { token, cookies, address }: the same SessionBundle as session.json
 ```
 

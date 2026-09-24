@@ -17,8 +17,10 @@ console.log('min order notional:', config.min_order_notional)
 for (const symbol of ['BTC', 'ETH', 'SOL']) {
   const f = await client.getFunding({ symbol, instrument_type: 'perpetual_future' })
   const hours = f.funding_interval_s / 3600
-  // A PREDICTION for the next payment, per interval — not settled history (docs/API.md).
+  // A PREDICTION, not settled history. The venue documents the value as a decimal
+  // (x100 for percent) but not its period; see docs/API.md#funding before relying on it.
+  const percent = (Number(f.predicted_funding_rate) * 100).toFixed(4)
   console.log(
-    `${symbol.padEnd(4)} predicted funding ${f.predicted_funding_rate} per ${hours}h, next at ${f.next_funding_time}`,
+    `${symbol.padEnd(4)} predicted funding ${percent}% (period unconfirmed, paid every ${hours}h), next at ${f.next_funding_time}`,
   )
 }
