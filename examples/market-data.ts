@@ -1,7 +1,7 @@
 /**
  * Public market data — no login needed.
  *
- *   npm run example examples/market-data.ts
+ *   pnpm example examples/market-data.ts
  *
  * Uses the curl transport: Node's own HTTP client is fingerprinted and refused by
  * Cloudflare on every request (docs/ACCESS.md). Works from a home connection; from a

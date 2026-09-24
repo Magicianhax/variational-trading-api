@@ -1,7 +1,7 @@
 /**
  * Live mark prices over WebSocket — no login needed.
  *
- *   npm run example examples/prices-ws.ts
+ *   pnpm example examples/prices-ws.ts
  *
  * `/prices` multiplexes many instruments at ~1 Hz but rounds to display precision; for
  * an unrounded mark use QuotesFeed (docs/API.md → WebSocket).

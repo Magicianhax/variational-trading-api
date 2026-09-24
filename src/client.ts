@@ -2,10 +2,10 @@
  * `OmniClient` — the typed surface over Variational Omni's private API.
  *
  * Every method here is a thin, honest translation of one venue call: exact wire
- * shapes, exact enum spellings, zod on every response. No trailing logic, no
+ * shapes, exact enum spellings, zod on every response. No strategy logic, no
  * persistence, no policy beyond rate limiting and the DRY_RUN gate.
  *
- * Corrections to the original findings doc that are baked in (all verified
+ * Corrections to earlier reverse-engineering notes, baked in (all verified
  * against the v3.6.4 bundle):
  *   1. `order_type` is lower_snake  — `"stop_loss"`, not `"StopLoss"`.
  *   2. `side` is lowercase          — `"sell"`, not `"Sell"`.
@@ -43,6 +43,8 @@ import {
 import { formatPrice, formatQty, validateQty } from './precision.js'
 import { RateLimiter, type RateLimiterConfig } from './rate-limit.js'
 import * as S from './schemas.js'
+import type { SessionBundle } from './session-bundle.js'
+import { loadSession } from './session-io.js'
 import type { Side } from './types.js'
 import { bpsToFraction, toWireSide } from './wire.js'
 
@@ -163,6 +165,34 @@ export class OmniClient {
 
   /** `min_qty_tick` learned from quotes, per instrument key and side. */
   private readonly tickCache = new Map<string, { bid: string; ask: string }>()
+
+  /**
+   * A client signed in as a saved session: a path to session.json, the same JSON as a
+   * string, a `SessionBundle`, or a raw `Cookie:` header copied from the browser (see
+   * `loadSession`). The cookies are the session; call `getMe()` to confirm it is live
+   * and to mint the WebSocket token if the bundle did not carry one.
+   *
+   * The bundle's `userAgent` is deliberately NOT applied: the curl transport passes
+   * Cloudflare with the tested Chrome UA, and pairing curl's TLS fingerprint with an
+   * arbitrary browser's UA is exactly the mismatch a bot score looks for. Pass
+   * `defaultHeaders` yourself when a transport needs it.
+   */
+  static fromSession(
+    source: string | SessionBundle,
+    options: Omit<OmniClientOptions, 'cookies'> = {},
+  ): OmniClient {
+    const session = loadSession(source)
+    const client = new OmniClient({
+      ...options,
+      // `loadSession` guarantees non-empty cookies; the fallback only satisfies the type.
+      cookies: session.cookies ?? '',
+      ...(options.connectedAddress === undefined && session.address !== undefined
+        ? { connectedAddress: session.address }
+        : {}),
+    })
+    if (session.token !== '') client.setToken(session.token)
+    return client
+  }
 
   constructor(options: OmniClientOptions = {}) {
     this.cookies =

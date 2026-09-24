@@ -1,8 +1,10 @@
-# Single-package repo; this file only carries pnpm settings.
+# The client library lives at the root; the browser extension is its own package.
 packages:
   - '.'
+  - 'extension'
 
-# Postinstall scripts are blocked by default; esbuild (used by vitest) needs its binary.
+# Postinstall scripts are blocked by default; esbuild (used by vitest and the extension
+# build) needs its binary.
 allowBuilds:
   esbuild: true
 

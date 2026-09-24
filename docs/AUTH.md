@@ -1,93 +1,177 @@
 # Authentication
 
-There are no API keys. A session is what the web app has after you connect a wallet:
-**HttpOnly cookies** set by a Sign-In-With-Ethereum handshake, plus a JWT.
+There are no API keys. The client signs in the same way the web app does: with the
+**session** your browser holds after you connect a wallet at
+<https://omni.variational.io>. If you can sign in to the site, you can use this client. You
+do not need a private key.
 
 ## What a session is
 
-| piece | where it comes from | what it's for |
+| piece | where it comes from | needed? |
 |---|---|---|
-| `vr-*` cookies | set by `POST /auth/login` | **The actual credential.** Every authenticated REST call. |
-| JWT | `GET /me` → `{ token }` | Decoding `address`, `exp`, `scope`; the WebSocket `{"claims": jwt}` frame |
+| `vr-*` cookies | Set by the site when you sign in. HttpOnly. | **Yes. This is the credential.** Every authenticated REST call carries them. |
+| JWT | `GET /api/me` returns `{ token }` for a signed-in session | **No.** `client.getMe()` fetches it from the cookies. It is used to read `address` and `exp`, and as the WebSocket `{"claims": jwt}` frame. |
 
-`x-omni-auth` is **not** a request header, despite what older notes say. In the bundle it
-is only ever read *off responses*: `x-omni-auth: r` marks an answer that came through the
-authenticated middleware. The credential is the cookie.
+So all the client needs is the cookies. In `session.json` (the `SessionBundle` format)
+`token` may be an empty string; the first `getMe()` fills it in.
 
-`GET /me` returns `{ token: "" }` when you are not logged in — check for the empty string.
+```json
+{
+  "token": "",
+  "cookies": "vr-...=...; vr-...=...",
+  "address": "0x...",
+  "expiresAt": 1767225600000
+}
+```
 
-Sessions last about **7 days** (the JWT `exp`). There is no refresh endpoint; log in again.
+`cookies` is what actually carries the session, and `loadSession` refuses a bundle without
+it. `address`, `userAgent` and `expiresAt` (epoch milliseconds) are informational; when
+`expiresAt` is missing it is read from the token's `exp`, if there is a token. The client
+does not send the saved `userAgent`: the curl transport uses the Chrome User-Agent it was
+tested with ([ACCESS.md](ACCESS.md)).
 
-## Option A — programmatic login (EOA key)
+`loadSession(source)` and `OmniClient.fromSession(source)` accept any of: a path to a
+session file, the same JSON as a string, a `SessionBundle` object, or a raw cookie header.
+So `VARIATIONAL_COOKIES` may hold either a cookie header or the contents of `session.json`.
+
+Facts worth knowing:
+
+- `GET /api/me` answers `{ token: "" }` when the cookies are missing or dead. An empty
+  token means "not signed in"; check for it.
+- Sessions last about **7 days** (the JWT `exp`). There is **no refresh endpoint**; when it
+  runs out, get a new one the same way you got the first.
+- `x-omni-auth` is **not** a request header, despite what older notes say. In the web
+  app's bundle it is only read off responses: `x-omni-auth: r` marks an answer that came
+  through the authenticated middleware. The credential is the cookie.
+
+## Getting a session
+
+Three ways, best first.
+
+### Option 1 (recommended): the bundled extension
+
+The repo ships a small Chrome extension, **Variational Session Exporter**, that reads the
+site's session cookies from your browser and saves them as `session.json`. It sends
+nothing anywhere unless you turn on its optional "Push to server" setting.
+
+1. `pnpm build:extension`
+2. `chrome://extensions` → turn on **Developer mode** → **Load unpacked** → pick
+   `extension/dist`.
+3. Sign in at <https://omni.variational.io>.
+4. Click the extension icon → **Download session.json**, move it to the repo root, and run
+   `pnpm session:check`.
+
+Full guide, including every permission it asks for: [EXTENSION.md](EXTENSION.md).
+
+### Option 2: copy the cookies from DevTools
+
+Works with any wallet, including smart-contract wallets. Written for Chrome; other
+browsers' DevTools are laid out much the same.
+
+1. Sign in at <https://omni.variational.io>.
+2. Press **F12** (or right-click → Inspect) to open DevTools.
+3. Open the **Network** tab and type `api` in the filter box.
+4. Click any request to `omni.variational.io/api/...`, for example `/api/portfolio` or
+   `/api/me`. If the list is empty, refresh the page with DevTools open.
+5. In **Headers**, scroll to **Request Headers** and copy the whole value of `cookie`.
+   Right-click the value → **Copy value** is the least error-prone way.
+6. Put it in `.env` in the repo root, on one line and without quotes:
+
+   ```bash
+   VARIATIONAL_COOKIES=paste-the-whole-value-here
+   ```
+
+   Or pass it straight to the client: `OmniClient.fromSession(cookieHeader)` or
+   `loadSession(cookieHeader)` both accept a raw cookie header.
+7. Run `pnpm session:check`.
+
+**Why not `document.cookie` in the console?** The session cookies are **HttpOnly**: the
+browser sends them with every request but deliberately hides them from page JavaScript.
+`document.cookie` shows only the non-HttpOnly cookies, which never include the session.
+The request headers in the Network tab show exactly what the browser sends, HttpOnly
+cookies included.
+
+**Paste the whole header; the client cleans it.** The header also contains Cloudflare
+cookies (`__cf_bm`, `_cfuvid`, `cf_clearance`) and analytics cookies (`_ga`, `_dd_s`,
+`intercom-*`, ...). `loadSession` runs every header through `cleanCookieHeader`, which drops
+those and keeps the rest. That matters: Cloudflare cookies are bound to the browser and
+network that earned them, and replaying them from another client turns a clean `401` into
+a `403` ([ACCESS.md](ACCESS.md)). A leading `cookie:` prefix is stripped too.
+
+**The JWT, if you want to look at it.** Not required: `getMe()` fetches it. In the DevTools
+**Console** on the signed-in site:
+
+```js
+await (await fetch('/api/me')).json()
+```
+
+The `token` field is the JWT. Its payload holds your `address` and `exp`. Keep it private
+like the cookies.
+
+### Option 3 (optional, advanced): programmatic login with a private key
+
+If you have a session, **you never need this.** It exists for unattended setups that must
+mint their own session. It performs the same Sign-In-With-Ethereum handshake the web app
+does, signing with the account's private key:
+
+```bash
+# in .env, or the environment:
+VARIATIONAL_PRIVATE_KEY=0x...
+pnpm example examples/login-with-private-key.ts   # writes ./session.json
+```
 
 ```ts
 import { curlTransport, mintSessionViaSiwe, OmniClient } from 'variational-trading-api'
 
 const client = new OmniClient({ fetchImpl: curlTransport })
 const session = await mintSessionViaSiwe(client, process.env.VARIATIONAL_PRIVATE_KEY!)
-// session = { token, cookies, address, expiresAt }
+// session = { token, cookies, address }: the same SessionBundle as session.json
 ```
 
-The handshake:
+Before you use it:
+
+- **Only an EOA key works.** A smart-contract wallet (Safe, Ambire, ...) cannot produce the
+  plain `personal_sign` signature the venue accepts. Use Option 1 or 2.
+- **Whoever holds the key holds the funds.** The key has to be present wherever this runs.
+  Keep what the account holds to what you are willing to lose on that machine.
+- **Run it from a home connection.** Login from a datacenter IP is challenged by Cloudflare
+  ([ACCESS.md](ACCESS.md)). Mint the session at home and carry `session.json` to the server
+  instead, so the key never lives there.
+
+The handshake, for reference:
 
 ```
-POST /auth/generate_signing_data   { address }                       -> message
+POST /api/auth/generate_signing_data   { address }                       -> message
      personal_sign(message, key)
-POST /auth/login                   { address, signed_message, ... }  -> Set-Cookie: vr-*
-GET  /me                                                             -> { token }
+POST /api/auth/login                   { address, signed_message, ... }  -> Set-Cookie: vr-*
+GET  /api/me                                                             -> { token }
 ```
 
-Three facts that cost time:
-
-- **The message must come from the venue.** It carries a server nonce; a locally
-  synthesised message signs perfectly and is rejected without explanation.
-- **An existing account's login sends no captcha token.** Cloudflare Turnstile gates
+- **The message must come from the venue.** It carries a server nonce; a locally built
+  message signs perfectly and is rejected without explanation.
+- **Logging in to an existing account sends no captcha token.** Cloudflare Turnstile gates
   new-account creation, not login.
-- **Only an EOA can do this.** A smart-contract wallet (Ambire, Safe, …) can't produce a
-  plain `personal_sign` signature the venue accepts. Use Option B.
 
-Run it from a home connection; login from a datacenter IP is challenged
-([ACCESS.md](ACCESS.md)).
+The app's "sign in on another device" (QR) flow is also mapped, and its sessions carry
+`scope: transfer:none`: trade-only, deposits and withdrawals disabled in the app (whether
+the server enforces that is unconfirmed). Endpoints are in [API.md](API.md#session-and-auth).
 
-## Option B — reuse a logged-in browser
+## Expiry and 401s
 
-Log in at `omni.variational.io` normally, then copy the session cookies (DevTools →
-Application → Cookies, the `vr-*` ones) into a `document.cookie`-style string:
-
-```ts
-const client = new OmniClient({ fetchImpl: curlTransport, cookies: 'vr-token=...; vr-...=...' })
-await client.getMe()
-```
-
-Works with any wallet, including smart-contract ones. Copy only `vr-*` cookies — never
-the Cloudflare ones (`__cf_bm`, `_cfuvid`, `cf_clearance`), which are bound to the
-browser that earned them.
-
-## Option C — the cross-device transfer flow (QR sign-in)
-
-The app's "sign in on another device" flow is also mapped:
-
-```
-POST /auth/issue_transfer_init_code
-GET  /auth/transfer_init_status?init_id=
-POST /auth/issue_transfer_token    { address, signed_message, init_code }
-POST /auth/transfer_token_status   { token }
-POST /auth/redeem_transfer_token   { transfer_token, init_id }
-```
-
-A redeemed session carries `scope: transfer:none` — **trade-only, deposits and
-withdrawals disabled** — which is exactly what you want on an unattended machine.
-(Unconfirmed whether that scope is enforced server-side or only in the UI.)
-
-## Handling expiry and 401s
-
-- Read the expiry from the JWT (`client.decodeToken(token)`) and log in again before it.
-- **Do not call `logout` on a 401.** It destroys a session that may still be recoverable.
-- The web app treats three consecutive 401s as a lost session and logs out; do the same.
-  `AuthError` is your signal to stop sending orders and get a new session.
+- `pnpm session:check` shows the time left. In code, `client.decodeToken()` after
+  `getMe()` gives the JWT `exp` (seconds), and `client.isTokenExpiring(withinSec)` checks it.
+- **Do not call `logout()` on a 401.** It destroys a session that may still be recoverable.
+- An `AuthError` (HTTP 401) is the signal to **stop sending orders** and get a new session.
+  `AuthError.sessionStamped` is true when the 401 carried `x-omni-auth: r`, meaning the
+  session itself is dead rather than one endpoint refusing. The web app treats three such
+  401s in a row as a lost session; doing the same is reasonable.
+- Mutating requests are never retried automatically. After an error mid-order, check
+  `getOrders()` / `getPositions()` before trying again.
 
 ## Keeping it safe
 
-- A session bundle is a password. `session.json` and `.env` are git-ignored here.
-- A private key used for SIWE can move funds. Keep the account's balance to what you're
-  willing to risk on the machine holding it — or use Option B/C and keep the key off it.
+- A session is a password for your account for up to 7 days: it can place and cancel
+  orders. `session.json` and `.env` are git-ignored here; keep them that way.
+- Never paste cookies, a token or a key into an issue, a chat or a screenshot.
+- The client keeps credentials out of its own log lines and error messages.
+- More, including how to revoke a session: [SECURITY.md](../SECURITY.md).

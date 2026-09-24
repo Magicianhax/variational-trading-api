@@ -4,8 +4,8 @@
  * Hits only PUBLIC, UNAUTHENTICATED, NON-MUTATING endpoints, with the client in
  * dry-run so a mutating call is structurally impossible even by accident.
  *
- * Run:  npm run smoke
- *       npm run smoke -- --no-ws
+ * Run:  pnpm smoke
+ *       pnpm smoke --no-ws
  *
  * Transport note (resolved 2026-08-13): `https://omni.variational.io/api` is behind a
  * Cloudflare challenge that gates on BOTH the TLS fingerprint and the header order.
@@ -146,9 +146,7 @@ async function main(): Promise<void> {
     console.log(
       'CHALLENGED is a REGRESSION: the curl transport passes all of these as of 2026-08-13.',
     )
-    console.log(
-      'Check packages/omni-client/src/curl-transport.ts (UA must go via --user-agent, never',
-    )
+    console.log('Check src/curl-transport.ts (UA must go via --user-agent, never')
     console.log('--header) and its regression tests, or Cloudflare has tightened further.\n')
   }
   // A challenge is now a failure, not an expected condition.

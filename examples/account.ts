@@ -2,25 +2,19 @@
  * Account state: balance, positions, and the transfer ledger (deposits, withdrawals,
  * realised PnL, funding, fees — the venue's own record of every cash movement).
  *
- *   npm run example examples/account.ts
+ *   pnpm example examples/account.ts
  *
- * Needs a session: ./session.json from examples/login.ts, or VARIATIONAL_COOKIES copied
- * from a logged-in browser (docs/AUTH.md).
+ * Needs a session: VARIATIONAL_COOKIES (a Cookie header or session JSON, in .env or the
+ * environment), else ./session.json from the browser extension. See docs/AUTH.md.
  */
-import { existsSync, readFileSync } from 'node:fs'
-import { curlTransport, OmniClient, type SessionBundle } from '../dist/index.js'
+import { OmniClient } from '../dist/index.js'
 import { loadEnv } from './_env.ts'
 
 loadEnv()
-const session: SessionBundle | undefined = existsSync('session.json')
-  ? (JSON.parse(readFileSync('session.json', 'utf8')) as SessionBundle)
-  : undefined
-const cookies = session?.cookies ?? process.env['VARIATIONAL_COOKIES']
-if (!cookies) throw new Error('no session: run examples/login.ts or set VARIATIONAL_COOKIES')
-
-const client = new OmniClient({ fetchImpl: curlTransport, cookies })
+// `||`, not `??`: an empty VARIATIONAL_COOKIES= line in .env should fall through too.
+const client = OmniClient.fromSession(process.env['VARIATIONAL_COOKIES'] || 'session.json')
 const me = await client.getMe()
-if (me.token === '') throw new Error('session rejected or expired — log in again')
+if (me.token === '') throw new Error('session rejected or expired: export a fresh one')
 
 const portfolio = await client.getPortfolio()
 console.log('balance', portfolio.balance, '| unrealised', portfolio.upnl)

@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Variational Session Exporter</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="head">
+      <div class="head-title">
+        <h1>Variational Session Exporter</h1>
+        <p class="head-sub">Unofficial · reads only omni.variational.io</p>
+      </div>
+      <span id="overall-pill" class="pill pill-unknown">checking…</span>
+    </header>
+
+    <main>
+      <section class="card" aria-labelledby="session-heading">
+        <div class="card-head">
+          <h2 id="session-heading">Session</h2>
+          <span id="session-pill" class="pill pill-unknown">checking…</span>
+        </div>
+        <p id="session-detail" class="detail">Reading your session…</p>
+        <p id="signin-hint" class="detail hidden">
+          <a href="https://omni.variational.io" target="_blank" rel="noopener noreferrer"
+            >Open omni.variational.io</a
+          >
+          and sign in, then press Re-check.
+        </p>
+        <dl class="kv">
+          <div><dt>Address</dt><dd id="session-address" class="mono">—</dd></div>
+          <div><dt>Expires</dt><dd id="session-expiry">—</dd></div>
+          <div><dt>Session cookies</dt><dd id="session-cookies">—</dd></div>
+        </dl>
+        <p id="session-dropped" class="detail muted"></p>
+
+        <div class="row">
+          <button id="copy" type="button" class="primary" disabled>Copy session JSON</button>
+          <button id="download" type="button" disabled>Download session.json</button>
+          <button id="refresh" type="button">Re-check</button>
+        </div>
+        <p id="export-detail" class="detail muted" role="status" aria-live="polite"></p>
+        <p class="note">
+          This is a login for your account. Anyone who has it can trade as you until it
+          expires. Keep it out of git, chats and screenshots.
+        </p>
+      </section>
+
+      <section id="permission-card" class="card hidden" aria-labelledby="permission-heading">
+        <div class="card-head">
+          <h2 id="permission-heading">Permission needed</h2>
+        </div>
+        <p id="permission-detail" class="detail"></p>
+        <div class="row">
+          <button id="grant" type="button" class="primary">Grant access</button>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="push-heading">
+        <div class="card-head">
+          <h2 id="push-heading">Push to server <span class="optional">optional</span></h2>
+          <span id="push-pill" class="pill pill-unknown hidden">off</span>
+        </div>
+        <form id="settings-form" autocomplete="off">
+          <label class="field field-inline">
+            <input id="push-enabled" type="checkbox" />
+            <span>
+              <strong>Send the session to my own server</strong>
+              <small
+                >For people who run their own bot or script. Sends
+                <code>POST {url}/session</code> with <code>Authorization: Bearer &lt;token&gt;</code>
+                and the session JSON as the body. Off by default.</small
+              >
+            </span>
+          </label>
+
+          <fieldset id="push-fields" class="hidden">
+            <label class="field">
+              <span>Server URL</span>
+              <input
+                id="server-url"
+                type="url"
+                inputmode="url"
+                spellcheck="false"
+                placeholder="https://bot.example.com"
+              />
+              <small id="server-url-error" class="error"></small>
+            </label>
+
+            <label class="field">
+              <span>Bearer token</span>
+              <span class="secret">
+                <input id="server-token" type="password" spellcheck="false" placeholder="token" />
+                <button id="toggle-token" type="button" class="ghost" aria-pressed="false">
+                  show
+                </button>
+              </span>
+            </label>
+
+            <label class="field field-inline">
+              <input id="auto-push" type="checkbox" />
+              <span>Push automatically when the session changes</span>
+            </label>
+
+            <label class="field">
+              <span>Re-check every (minutes)</span>
+              <input id="refresh-minutes" type="number" min="1" max="360" step="1" />
+            </label>
+          </fieldset>
+
+          <div class="row">
+            <button id="save" type="submit">Save</button>
+            <span id="save-detail" class="detail muted" role="status" aria-live="polite"></span>
+          </div>
+        </form>
+
+        <div id="push-status" class="hidden">
+          <p id="push-detail" class="detail"></p>
+          <dl class="kv">
+            <div><dt>Last push</dt><dd id="push-when">—</dd></div>
+          </dl>
+          <div class="row">
+            <button id="push-now" type="button">Push now</button>
+          </div>
+          <p id="push-action-detail" class="detail muted" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <footer class="foot">
+        <p>
+          Reads the <code>omni.variational.io</code> cookies and <code>GET /api/me</code>, nothing
+          else. Analytics and Cloudflare cookies are left out. Nothing leaves your browser unless
+          you copy, download, or turn on push.
+        </p>
+      </footer>
+    </main>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

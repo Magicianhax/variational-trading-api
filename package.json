@@ -22,12 +22,16 @@
   "packageManager": "pnpm@11.15.1",
   "scripts": {
     "build": "tsc -b",
+    "build:extension": "pnpm --filter variational-session-exporter build",
     "clean": "tsc -b --clean",
-    "typecheck": "tsc -b && tsc -p tsconfig.test.json",
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json && pnpm typecheck:extension",
+    "typecheck:extension": "pnpm --filter variational-session-exporter typecheck",
     "test": "vitest run",
+    "test:extension": "pnpm --filter variational-session-exporter test",
     "test:watch": "vitest",
     "lint": "biome check .",
     "format": "biome check --write .",
+    "session:check": "tsc -b && node --experimental-strip-types scripts/session-check.ts",
     "smoke": "tsc -b && node --experimental-strip-types scripts/smoke.ts",
     "example": "tsc -b && node --experimental-strip-types"
   },

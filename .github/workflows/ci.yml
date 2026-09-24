@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -17,5 +20,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
+      # Covers the client, its tests, scripts and examples, then the extension.
       - run: pnpm typecheck
+      # One vitest run over both projects (client + extension); all pure, no network.
       - run: pnpm test
+      - run: pnpm build
+      - run: pnpm build:extension
+      - run: test -f extension/dist/manifest.json

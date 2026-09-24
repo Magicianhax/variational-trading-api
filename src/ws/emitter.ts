@@ -66,6 +66,6 @@ export class Emitter<Events extends Record<string, unknown>> {
   /** Overridable hook; default is a console warning so a bug is never silent. */
   protected onListenerError(event: string, err: unknown): void {
     // eslint-disable-next-line no-console
-    console.warn(`[omni-client] listener for "${event}" threw:`, err)
+    console.warn(`[variational-trading-api] listener for "${event}" threw:`, err)
   }
 }

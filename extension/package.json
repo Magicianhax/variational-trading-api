@@ -1,0 +1,31 @@
+{
+  "name": "variational-session-exporter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Unofficial MV3 browser extension that exports a signed-in omni.variational.io session as session.json.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc --noEmit && node scripts/build.mjs",
+    "build:dev": "tsc --noEmit && node scripts/build.mjs --dev",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "dependencies": {
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.287",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.4"
+  },
+  "overrides": {
+    "rollup": "4.62.4"
+  }
+}

@@ -9,8 +9,8 @@
  * Quick start:
  *
  * ```ts
- * const client = new OmniClient({ cookies: cookieHeader, dryRun: true })
- * await client.getMe()                                  // mints the WebSocket JWT
+ * const client = OmniClient.fromSession('session.json')  // or a pasted Cookie header
+ * await client.getMe()                                  // confirms the session, mints the WS JWT
  * const positions = await client.getPositions()
  *
  * const prices = new PricesFeed({ wsBaseUrl: DEFAULT_WS_URL })
@@ -176,11 +176,13 @@ export {
   setBrowserCookies,
 } from './browser-transport.js'
 /*
- * Session lifecycle: sign in with an Ethereum key via SIWE and get back the cookies and
- * token every other call needs. See docs/AUTH.md.
+ * Optional, advanced: sign in with an EOA private key via SIWE instead of exporting a
+ * session from the browser. See docs/AUTH.md.
  */
 export { mintSessionViaSiwe } from './session.js'
 export type { SessionBundle } from './session-bundle.js'
+/* Loading a saved session: session.json, pasted JSON, or a raw Cookie header. */
+export { cleanCookieHeader, loadSession } from './session-io.js'
 export { addressFromPrivateKey, personalSign } from './siwe.js'
 /* Domain vocabulary ------------------------------------------------------ */
 export type {

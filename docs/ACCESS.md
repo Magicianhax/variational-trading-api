@@ -50,7 +50,16 @@ context (Playwright is not a dependency of this package):
 
 ```ts
 import { chromium } from 'playwright'
-import { createBrowserTransport, OmniClient, purgeNonSessionCookies, setBrowserCookies } from 'variational-trading-api'
+import {
+  createBrowserTransport,
+  loadSession,
+  OmniClient,
+  purgeNonSessionCookies,
+  setBrowserCookies,
+} from 'variational-trading-api'
+
+// session.json from the extension (or a raw Cookie header); see AUTH.md.
+const { cookies = '' } = loadSession('session.json')
 
 const ctx = await chromium.launchPersistentContext('.browser-profile', { headless: false })
 await purgeNonSessionCookies(ctx)
