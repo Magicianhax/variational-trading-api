@@ -599,6 +599,11 @@ export const openInterestSchema = z.looseObject({
   short_qty: decimalString,
 })
 
+/**
+ * `GET /funding/v2`. `predicted_funding_rate` is an ANNUALISED rate as a decimal
+ * (`0.033522` = 3.35% a year), checked against the web app's "8hr Funding" figure;
+ * divide by the number of `funding_interval_s` periods in a year for one payment.
+ */
 export const fundingSchema = z.looseObject({
   predicted_funding_rate: decimalString,
   next_funding_time: timestampString,

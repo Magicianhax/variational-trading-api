@@ -157,12 +157,11 @@ use it for idempotency and to find the order in `/orders/v2`.
 { "predicted_funding_rate": "0.031605", "next_funding_time": "2026-09-24T16:00:00Z", "funding_interval_s": 28800 }
 ```
 
-- **Unit.** Variational's own API docs call this a decimal ("multiply by 100 for
-  percentage") but do not say over what period. `0.031605` is therefore `3.1605%`, and it
-  is **unconfirmed** whether that is per funding interval or annualised. The magnitudes
-  seen across markets (BTC around ±0.03, small caps around ±0.15) and the venue's
-  documented cap of 2% per hour fit an annualised rate better than a per-interval one.
-  `TODO(live)`: compare with the funding figure the web app shows for the same market.
+- **Unit: an annualised rate, as a decimal.** Checked against the web app at the same
+  moment: the API returned `0.033522` for BTC while the page showed **"8hr Funding
+  0.0031%"**. `0.033522 / 1095` (8-hour periods in a year) = `0.0000306` = `0.0031%`.
+  So `0.033522` means **3.35% a year**, and the payment per funding interval is
+  `rate / (31_536_000 / funding_interval_s)`.
 - It is a **prediction** of the next payment and drifts live between calls. Not settled.
 - It is the **only** funding route. Time-range parameters (`start_time`, `end_time`,
   `limit`, `history`) are ignored — the same single value comes back. There is **no
@@ -256,7 +255,6 @@ Marked `TODO(live)` in the source where they matter:
 
 - Whether an anonymously minted `quote_id` (from `/quotes/simple`) is accepted by
   `/orders/new/market` or `/quotes/accept`.
-- The period of `predicted_funding_rate` (per interval or annualised; see Funding).
 - What `/market_status` streams.
 - Whether `scope: transfer:none` is enforced server-side.
 - Exact units of `/sub_accounts/allocation`'s `target_allocation` (almost certainly USDC).
